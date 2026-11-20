@@ -148,7 +148,6 @@ def main() -> None:
         chart_data,
         y_label="Güç (kW)",
         x_label="Zaman dilimi",
-        alt="Referans, optimize edilmiş yük ve tesis güç sınırının karşılaştırması",
     )
 
     st.subheader("Önerilen çalışma planı")
