@@ -1,17 +1,17 @@
 # Energy Optimizer
 
-**Energy Optimizer Pro** is an early-stage industrial energy analytics and scheduling product. Version 0.3.0 adds timestamped CSV/XLSX meter-data import, consumption analysis, a SciPy/HiGHS MILP scheduler, and production-normalized comparisons between measured periods.
+**Energy Optimizer Pro** is an early-stage industrial energy analytics and production-aware scheduling product. Version 0.4.0 adds machine capacity, operation precedence, weighted priorities, and soft due-date penalties.
 
-> **Status: pilot MVP (v0.3.0).** This is decision-support software, not a certified energy audit or guaranteed savings product. It does not control physical equipment. Realized savings require a site-approved measurement and verification method.
+> **Status: pilot MVP (v0.4.0).** This is decision-support software, not a certified energy audit or guaranteed savings product. It does not control physical equipment.
 
-## Features
+## Capabilities
 
 - Import timestamped interval meter data from UTF-8 CSV or XLSX
-- Validate timezone-aware timestamps, regular intervals, numeric fields, and optional production quantities
 - Analyze kWh, cost, average and peak kW, load factor, and kWh per production unit
-- Schedule flexible loads under an import-power cap
-- Use SciPy/HiGHS mixed-integer linear programming (MILP) or the greedy heuristic
-- Compare measured baseline and reporting periods; normalize energy intensity when production data exists
+- Optimize flexible electrical loads under a site import-power cap
+- Schedule production operations with machine exclusivity and predecessor relationships
+- Prioritize critical operations and penalize soft due-date lateness
+- Use SciPy/HiGHS MILP or a deterministic greedy heuristic
 - Explore scenarios in a local Streamlit dashboard and export a JSON report
 
 ## Install and run
@@ -20,46 +20,76 @@ Python 3.11 or newer is required.
 
 ```bash
 python -m venv .venv
-
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-
-# macOS / Linux
-source .venv/bin/activate
-
+.venv/Scripts/Activate.ps1
 pip install -e ".[app,optimization,dev]"
 streamlit run app.py
 ```
 
-The dashboard includes three workspaces: scenario optimization, meter analysis, and measured-period comparison.
+On macOS/Linux, use source .venv/bin/activate after creating the virtual environment.
+
+## Production scenario fields
+
+The existing task fields remain required: task_id, name, power_kw, duration_slots, earliest_start, and latest_start. These additional fields are optional:
+
+| Field | Meaning |
+|---|---|
+| machine_id | Shared single-capacity machine/resource ID; operations cannot overlap |
+| predecessors | Task IDs that must finish before this operation can start |
+| due_slot | Soft deadline expressed as an exclusive finish interval |
+| priority_weight | Integer 1–1000; higher values preserve more important work |
+| delay_penalty_per_slot | Objective penalty per interval past due_slot |
+
+Example operation:
+
+```json
+{
+  "task_id": "drill",
+  "name": "Drill housing",
+  "power_kw": 8.5,
+  "duration_slots": 2,
+  "earliest_start": 2,
+  "latest_start": 10,
+  "machine_id": "CNC-01",
+  "predecessors": ["cut"],
+  "due_slot": 8,
+  "priority_weight": 5,
+  "delay_penalty_per_slot": 12.0
+}
+```
+
+All times are interval indices on the same planning horizon. A due_slot of 8 means the operation should finish by the start of interval 8. It is a soft deadline; lateness is penalized, not made infeasible. Penalty units are planning-objective units and are reported separately from electricity bill cost. Priority weights are relative importance scores, not monetary values.
+
+A machine ID represents a single-capacity resource in this release. Alternative machine routing, setup/changeover times, batch yields, labor, buffers, maintenance calendars, and quality constraints are not yet modeled.
 
 ## Meter file format
 
 Required columns:
-- `timestamp`: ISO-8601 timestamp with an explicit UTC offset, for example `2026-01-01T00:00:00+03:00`
-- `price_per_kwh`: price in one consistent currency per kWh
-- `base_load_kw`: measured average import power in kW for the interval
+- timestamp: ISO-8601 timestamp with an explicit UTC offset
+- price_per_kwh: price in one consistent currency per kWh
+- base_load_kw: average import power for the interval, excluding modeled flexible tasks
 
 Optional column:
-- `production_units`: quantity produced during the interval; if present, it must be populated on every row
+- production_units: quantity produced during the interval; if present, populate every row
 
-Timestamps must be strictly increasing and evenly spaced. At least two rows are needed to infer interval length. CSV and XLSX are supported; XLSX reads the first worksheet. The total site meter template is [examples/meter-template.csv](examples/meter-template.csv); the optimization-only residual load template is [examples/optimizer-base-load-template.csv](examples/optimizer-base-load-template.csv). Do not feed total import power into the optimizer as base load when the flexible tasks are already included in that measurement.
+CSV and XLSX are supported. Timestamps must be strictly increasing and evenly spaced. Do not feed total import power into the optimizer as base load when flexible tasks are already included in that measurement.
 
 ## Optimization methods
 
-- `greedy`: fast deterministic heuristic; does not guarantee an optimal solution.
-- `milp`: SciPy/HiGHS mixed-integer solver; install the optimization extra.
-- `auto`: attempts MILP and falls back to greedy if SciPy is unavailable.
+- greedy: fast deterministic heuristic; respects supplied machine and precedence constraints but does not guarantee global optimality.
+- milp: SciPy/HiGHS mixed-integer solver.
+- auto: attempts MILP and falls back to greedy if SciPy is unavailable.
 
-The MILP first minimizes the number of unscheduled tasks, then minimizes energy cost among schedules with the same number of scheduled tasks. It enforces the site power cap in every interval. A time-limited solve can return a feasible incumbent that is not proven optimal; inspect the solver status in the result.
+The MILP first maximizes the sum of scheduled task priority weights, then minimizes modeled energy cost plus due-date delay penalties. With all weights set to 1, the first objective is equivalent to maximizing the number of scheduled operations. It enforces the site power cap, single-capacity machine constraints, and declared predecessor relationships. A time-limited solve may find a feasible incumbent without proving optimality.
 
-## Savings and measurement limits
+## Measurement limits
 
-The scenario report compares the same successfully scheduled tasks against an earliest-allowed-start reference. It is a modeled estimate, not an invoice saving.
+A modeled scenario estimate is not an audited bill saving. Metered before/after differences do not establish causality. Production mix, operating hours, weather, maintenance, tariff, and other conditions can change. The current model does not calculate every component of a Turkish electricity invoice.
 
-Measured-period comparison shows raw energy and nominal cost differences. When both files include production quantities, it also compares kWh per production unit and estimates normalized energy difference at reporting-period production. That comparison does not establish causality: weather, operating hours, product mix, maintenance, tariffs, and other conditions may change. A customer pilot should document a baseline and agreed measurement and verification method.
+## Engineering and security boundaries
 
-The current model does not fully calculate Turkish electricity invoices, including all taxes, distribution, reactive energy, demand charges, contract terms, or other tariff components.
+This release models non-preemptive tasks with constant average power. It does not yet include forecasting, batteries, PV, alternative machine routing, setup times, labor, buffer dynamics, or process quality constraints.
+
+The dashboard remains a local pilot with no authentication, tenant isolation, database, billing, hosted security, or physical device control. Keep integrations read-only until a separate site safety case is approved.
 
 ## Run checks
 
@@ -69,28 +99,8 @@ ruff check .
 pytest
 ```
 
-## Product and safety documents
-
-- [Project scope](docs/project-scope.md)
-- [Commercial MVP and pilot plan](docs/commercial-mvp.md)
-- [Pilot security and customer data](docs/pilot-security.md)
-- [Architecture](docs/architecture.md)
-- [Data contract](docs/data-contract.md)\n- [MILP optimization model](docs/optimization-model.md)\n- [Measurement and verification notes](docs/measurement-and-verification.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
-
-## Roadmap
-
-- [x] CSV/XLSX interval meter import and validation
-- [x] Consumption and production-intensity analytics
-- [x] MILP scheduler and greedy fallback
-- [x] Measured-period comparison with optional production normalization
-- [ ] Full tariff and invoice model
-- [ ] Forecasting for load, prices, and renewable generation
-- [ ] API, customer accounts, tenant isolation, and secure hosted deployment
-- [ ] Read-only meter/BMS integrations
-- [ ] Operator-approved, safety-reviewed control integrations (separate phase)
+See [the production scheduling contract](docs/production-scheduling.md), [architecture](docs/architecture.md), and [product roadmap](docs/roadmap.md) for model design, validation gates, and next milestones.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See LICENSE.

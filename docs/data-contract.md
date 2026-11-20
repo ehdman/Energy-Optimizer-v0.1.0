@@ -30,11 +30,23 @@ production_units kullanılıyorsa her satırda dolu olmalıdır. Negatif güç v
 | max_power_kw | sayı | kW | Sıfırdan büyük |
 | tasks | EnergyTask dizisi | — | Benzersiz task_id |
 
-Her görev: task_id, name, power_kw, duration_slots, earliest_start, latest_start. latest_start dahildir; görev seçilen başlangıçtan itibaren kesintisiz ve bölünmeden çalışır.
+Her görev için zorunlu alanlar: task_id, name, power_kw, duration_slots, earliest_start, latest_start. latest_start dahildir; görev seçilen başlangıçtan itibaren kesintisiz ve bölünmeden çalışır.
+
+Üretim planlaması için isteğe bağlı alanlar:
+
+| Alan | Tür | Kural |
+|---|---|---|
+| machine_id | metin | Aynı kimliği kullanan operasyonlar çakışamaz; tek kapasiteli kaynak kabul edilir |
+| predecessors | görev ID dizisi | Tüm öncül görevler ardıl başlamadan önce bitmeli; bilinmeyen ID ve döngüler reddedilir |
+| due_slot | tamsayı | Soft bitiş hedefi; end_slot_exclusive bu değeri aşarsa gecikme oluşur |
+| priority_weight | 1–1000 tamsayı | Çizelgelenebilir iş ağırlığı; varsayılan 1 |
+| delay_penalty_per_slot | sıfır veya pozitif sayı | due_slot sonrasındaki her aralık için objective cezası; varsayılan 0 |
+
+Gecikme cezası elektrik maliyetinden ayrı raporlanır ve para birimi olarak yorumlanmamalıdır. MILP önce toplam çizelgelenmiş öncelik ağırlığını maksimize eder, sonra enerji maliyeti ve gecikme cezasını minimize eder. Tüm ağırlıklar 1 ise ilk amaç tamamlanan görev sayısını maksimize etmektir.
 
 ## Çözücü sonucu
 
-OptimizationResult çizelgeyi, çizelgelenemeyen görevleri, baz/esnek yük maliyetini, toplam maliyeti, enerji ve tepe gücü döndürür. solver_name, is_optimal ve mip_gap çözücü bilgisini gösterir. Zaman sınırında elde edilen uygulanabilir MILP çözümü optimal olduğu kanıtlanmış çözüm değildir.
+OptimizationResult çizelgeyi, çizelgelenemeyen görevleri, baz/esnek yük maliyetini, toplam maliyeti, enerji ve tepe gücünü; ayrıca çizelgelenmiş öncelik toplamını ve soft teslim gecikmesini döndürür. solver_name, is_optimal ve mip_gap çözücü bilgisini gösterir. Zaman sınırında elde edilen uygulanabilir MILP çözümü optimal olduğu kanıtlanmış çözüm değildir.
 
 ## Ölçülen dönem karşılaştırması
 

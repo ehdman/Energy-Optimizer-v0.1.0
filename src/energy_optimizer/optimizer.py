@@ -2,7 +2,35 @@
 
 from __future__ import annotations
 
-from .models import OptimizationRequest, OptimizationResult, ScheduledTask
+from .models import EnergyTask, OptimizationRequest, OptimizationResult, ScheduledTask
+
+
+def _topological_task_order(tasks: tuple[EnergyTask, ...]) -> list[EnergyTask]:
+    """Return a deterministic topological order, prioritizing important work."""
+    tasks_by_id = {task.task_id: task for task in tasks}
+    predecessors = {task.task_id: set(task.predecessors) for task in tasks}
+    ordered: list[EnergyTask] = []
+    completed: set[str] = set()
+    while len(ordered) < len(tasks):
+        ready = [
+            tasks_by_id[task_id]
+            for task_id, required in predecessors.items()
+            if task_id not in completed and required <= completed
+        ]
+        if not ready:
+            raise ValueError("task predecessor relationships must be acyclic")
+        ready.sort(
+            key=lambda task: (
+                -task.priority_weight,
+                task.latest_start - task.earliest_start,
+                task.earliest_start,
+                task.task_id,
+            )
+        )
+        task = ready[0]
+        ordered.append(task)
+        completed.add(task.task_id)
+    return ordered
 
 
 def _build_result(
@@ -17,6 +45,7 @@ def _build_result(
     tasks_by_id = {task.task_id: task for task in request.tasks}
     added_load = [0.0] * len(request.prices_per_kwh)
     scheduled: list[ScheduledTask] = []
+    total_delay_penalty = 0.0
     for task_id, start in placements.items():
         task = tasks_by_id[task_id]
         end = start + task.duration_slots
@@ -24,10 +53,23 @@ def _build_result(
             added_load[slot] += task.power_kw
         energy = task.power_kw * request.slot_hours * task.duration_slots
         cost = task.power_kw * request.slot_hours * sum(request.prices_per_kwh[start:end])
+        late_slots = max(0, end - task.due_slot) if task.due_slot is not None else 0
+        delay_penalty = late_slots * task.delay_penalty_per_slot
+        total_delay_penalty += delay_penalty
         scheduled.append(
-            ScheduledTask(task.task_id, task.name, start, end, energy, cost)
+            ScheduledTask(
+                task_id=task.task_id,
+                name=task.name,
+                start_slot=start,
+                end_slot_exclusive=end,
+                energy_kwh=energy,
+                cost=cost,
+                machine_id=task.machine_id,
+                priority_weight=task.priority_weight,
+                late_slots=late_slots,
+                delay_penalty=delay_penalty,
+            )
         )
-
     load_profile = tuple(
         base + added
         for base, added in zip(request.base_load_kw, added_load, strict=True)
@@ -49,35 +91,60 @@ def _build_result(
         solver_name=solver_name,
         is_optimal=is_optimal,
         mip_gap=mip_gap,
+        total_delay_penalty=total_delay_penalty,
+        scheduled_priority_weight=sum(item.priority_weight for item in scheduled),
+        late_task_count=sum(item.late_slots > 0 for item in scheduled),
     )
 
 
 def optimize_greedy(request: OptimizationRequest) -> OptimizationResult:
-    """Fast deterministic heuristic; it does not guarantee a global optimum."""
+    """Fast deterministic heuristic that respects machine and precedence rules."""
     added_load = [0.0] * len(request.prices_per_kwh)
     placements: dict[str, int] = {}
     unscheduled: list[str] = []
-    ordered_tasks = sorted(
-        request.tasks,
-        key=lambda task: (
-            task.latest_start - task.earliest_start + 1,
-            -(task.power_kw * task.duration_slots),
-            task.task_id,
-        ),
-    )
-    for task in ordered_tasks:
+    tasks_by_id = {task.task_id: task for task in request.tasks}
+
+    for task in _topological_task_order(request.tasks):
+        if any(predecessor not in placements for predecessor in task.predecessors):
+            unscheduled.append(task.task_id)
+            continue
+        earliest = max(
+            [task.earliest_start]
+            + [
+                placements[predecessor] + tasks_by_id[predecessor].duration_slots
+                for predecessor in task.predecessors
+            ]
+        )
         best_choice: tuple[float, int] | None = None
-        for start in range(task.earliest_start, task.latest_start + 1):
+        for start in range(earliest, task.latest_start + 1):
             end = start + task.duration_slots
-            feasible = all(
+            power_feasible = all(
                 request.base_load_kw[slot] + added_load[slot] + task.power_kw
                 <= request.max_power_kw + 1e-9
                 for slot in range(start, end)
             )
-            if not feasible:
+            machine_feasible = True
+            if task.machine_id is not None:
+                for other_id, other_start in placements.items():
+                    other = tasks_by_id[other_id]
+                    if other.machine_id != task.machine_id:
+                        continue
+                    other_end = other_start + other.duration_slots
+                    if start < other_end and other_start < end:
+                        machine_feasible = False
+                        break
+            if not power_feasible or not machine_feasible:
                 continue
-            cost = task.power_kw * request.slot_hours * sum(request.prices_per_kwh[start:end])
-            candidate = (cost, start)
+            energy_cost = (
+                task.power_kw
+                * request.slot_hours
+                * sum(request.prices_per_kwh[start:end])
+            )
+            late = max(0, end - task.due_slot) if task.due_slot is not None else 0
+            candidate = (
+                energy_cost + late * task.delay_penalty_per_slot,
+                start,
+            )
             if best_choice is None or candidate < best_choice:
                 best_choice = candidate
         if best_choice is None:
