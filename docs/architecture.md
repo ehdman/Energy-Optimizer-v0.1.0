@@ -1,40 +1,51 @@
 # Mimari notları
 
-## v0.3.0 veri akışı
+## v0.4.0 veri akışı
 
 1. Sayaç adaptörü CSV/XLSX dosyasını okur; zaman damgalarını, birimleri ve düzenli aralıkları doğrular.
-2. Analiz katmanı kWh, maliyet, ortalama/tepe kW, yük faktörü ve mevcutsa kWh/üretim birimi hesaplar.
-3. Optimizasyon isteği fiyat serisi, esnek yüklerden arındırılmış baz yük, görevler ve tesis güç sınırından oluşturulur.
-4. Çözücü MILP veya greedy yöntemini kullanır.
-5. Raporlama katmanı model bazlı referans karşılaştırmasını veya iki sayaç dönemi arasındaki ölçülen farkı ayrı ayrı gösterir.
+2. Domain katmanı elektrik yüklerini ve üretim operasyonlarını aynı zaman ufkunda temsil eder.
+3. Üretim bağımlılıkları DAG olarak doğrulanır; makine kimlikleri tek-kapasiteli kaynakları tanımlar.
+4. MILP çözücüsü üretim önceliği, enerji maliyeti, gecikme, tesis güç sınırı, makine doluluğu ve operasyon sırasını birlikte ele alır.
+5. Analiz/raporlama enerji maliyeti ile gecikme cezasını ayrı tutar.
+6. Dashboard önerileri gösterir; fiziksel ekipmana komut göndermez.
 
 ## Katmanlar
 
-- **Domain modelleri:** Görev, optimizasyon isteği ve sonuç veri sınıfları.
+- **Domain modelleri:** Enerji görevi/üretim operasyonu, kaynak kimliği, öncelik, teslim zamanı, optimizasyon isteği ve sonucu.
 - **Ingestion:** CSV/XLSX okuma, ISO-8601 zaman damgası, saat dilimi, düzenli aralık ve sayısal veri doğrulaması.
 - **Analytics:** Tüketim, maliyet, tepe güç ve üretim yoğunluğu göstergeleri.
-- **Optimization:** SciPy/HiGHS MILP ve açıklanabilir greedy alternatif.
-- **Reporting:** Senaryo bazlı maliyet karşılaştırması ve sayaçtan ölçülen dönem karşılaştırması.
+- **Optimization:** SciPy/HiGHS MILP ve kısıtları koruyan greedy alternatif.
+- **Reporting:** Model bazlı maliyet ve sayaçtan ölçülen dönem karşılaştırması.
 - **Dashboard:** Yerel Streamlit pilot arayüzü; kullanıcı hesabı veya veritabanı içermez.
 
-## MILP modeli
+## Üretim ve enerji modeli
 
-Her esnek görev için izin verilen başlangıç noktalarının her biri bir ikili karar değişkenidir. Ayrıca görevin çizelgelenemediğini belirten bir ikili değişken vardır.
+Her görev bir üretim operasyonu veya bağımsız esnek enerji yükü olabilir. Aynı machine_id değerini paylaşan işler aynı zaman aralığında çalışamaz. predecessors alanı, bir operasyonun başlayabilmesi için bitmiş olması gereken görevleri tanımlar. Bağımlılık grafiği döngüsüz olmalıdır.
 
-- Her görev tam olarak bir başlangıç seçer veya çizelgelenmedi olarak işaretlenir.
-- Her zaman diliminde baz yük + seçilen esnek görev güçleri tesis sınırını aşamaz.
-- Amaç fonksiyonu önce çizelgelenmeyen görev sayısını en aza indirir; aynı tamamlanan görev sayısı içinde enerji maliyetini en aza indirir.
-- Büyük ceza katsayısı, olası tüm görev maliyetlerinin mutlak toplamından türetilir.
-- Çözücü zaman sınırında uygulanabilir bir çözüm döndürürse sonuç optimal olarak işaretlenmez; solver metadata alanları bu ayrımı taşır.
+MILP amaç sırası:
+1. Çizelgelenen toplam priority_weight değerini maksimize et.
+2. Aynı ağırlıklı tamamlanma düzeyinde elektrik maliyeti + açıkça tanımlanmış soft due-date gecikme cezasını minimize et.
 
-MILP, görevlerin bölünmeden ve sabit güçte çalıştığı v0.3.0 varsayımlarını kullanır. Başlangıç penceresi ve güç kısıtları dışında üretim sırası, sıcaklık, basınç, bakım veya makine bağımlılıkları henüz modellenmez.
+Bütün öncelik ağırlıkları 1 ise ilk hedef mümkün olan görev sayısını maksimize eder. Gecikme cezası elektrik faturası maliyeti değildir; ayrı raporlanır. Ağırlıklar göreceli tercihlerdir ve müşteri operasyon sorumlusu tarafından onaylanmalıdır.
 
-## Sayaç verisi semantiği
+## Model kısıtları
 
-- **import_power_kw:** Tesisin sayaçta ölçülen toplam aktif güç serisi. Tüketim analizinde ve dönem karşılaştırmasında kullanılır.
-- **base_load_kw:** Optimizasyonda esnek görevler dışında kalan baz/rezidüel güç serisi. Esnek görev güçlerini ayrıca eklediğimiz için bu seri aynı yükleri zaten içermemelidir.
-- **production_units:** Aynı aralıkta üretilen miktar. Üretim yoğunluğu hesaplamasına yardımcı olur; birim ve ürün karması müşteri tarafından tanımlanmalıdır.
+- Her görev bir başlangıç seçer veya çizelgelenmemiş olarak işaretlenir.
+- Baz yük + esnek görev güçleri her aralıkta tesis sınırını aşamaz.
+- Aynı makinedeki operasyonlar çakışamaz.
+- Bir operasyon seçilirse tüm doğrudan öncülleri seçilmeli ve bitişleri operasyon başlangıcını geçmemelidir.
+- Soft due slot aşılırsa ceza objective değerine eklenir; görev yine de çizelgelenebilir.
+
+## Henüz modellenmeyen proses gerçekleri
+
+Bu sürüm sabit süreli, sabit ortalama güçlü, bölünemez operasyonlar kullanır. Alternatif makine ataması, paralel makine kapasitesi, setup/changeover, ürün rotası seçimi, batch miktarı/yield, iş gücü, buffer/stok, bakım, vardiya, kalite, sıcaklık/basınç ve dinamik güç eğrileri henüz yoktur. Bir tesis için üretim tavsiyesi vermeden önce saha mühendisi bu varsayımları doğrulamalıdır.
+
+## Sayaç semantiği
+
+- import_power_kw: Tesisin sayaçta ölçülen toplam aktif güç serisi. Analiz ve dönem karşılaştırmasında kullanılır.
+- base_load_kw: Optimizasyonda esnek görevler dışında kalan rezidüel güç serisi.
+- production_units: Aynı aralıktaki üretim miktarı. Birim ve ürün karması müşteri tarafından tanımlanmalıdır.
 
 ## Güvenlik sınırı
 
-Dashboard yerel prototiptir. API, kimlik doğrulama, kiracı izolasyonu, kalıcı saklama, denetim izi ve cihaz kontrolü içermez. Gerçek sistemlerle entegrasyon ayrı bir tehdit modeli ve emniyet tasarımı gerektirir.
+Dashboard yerel prototiptir. API, kimlik doğrulama, kiracı izolasyonu, kalıcı saklama, denetim izi ve cihaz kontrolü içermez. İlk entegrasyon hedefi salt okunur veri toplama olmalıdır; PLC/SCADA yazma bağlantısı bu sürümün kapsamı dışındadır.
