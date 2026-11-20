@@ -71,4 +71,4 @@ def test_reference_profile_uses_earliest_allowed_start():
     report = build_savings_report(request, result)
 
     assert report.reference_load_profile_kw[1:3] == (3.0, 3.0)
-    assert report.optimized_load_profile_kw if hasattr(report, "optimized_load_profile_kw") else True
+    assert report.optimized_peak_power_kw == result.peak_power_kw
