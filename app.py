@@ -110,6 +110,12 @@ def run_optimizer_tab() -> None:
         meter_data = None
         if meter_file is not None:
             meter_data = read_meter_data(meter_file.name, meter_file.getvalue())
+            if meter_data.power_column != "base_load_kw":
+                raise ValueError(
+                    "Scheduling requires base_load_kw that excludes the flexible tasks "
+                    "defined in the scenario. import_power_kw is total site import power "
+                    "and belongs in the analysis/comparison tabs."
+                )
             scenario = dict(scenario)
             scenario["prices_per_kwh"] = list(meter_data.prices_per_kwh)
             scenario["base_load_kw"] = list(meter_data.base_load_kw)
@@ -232,7 +238,8 @@ def run_optimizer_tab() -> None:
 def run_analysis_tab() -> None:
     st.subheader("Sayaç tüketim analizi")
     st.caption(
-        "CSV/XLSX dosyası: timestamp, price_per_kwh, base_load_kw ve isteğe bağlı production_units."
+        "Analiz için import_power_kw (toplam sayaç gücü) veya base_load_kw yükleyin; "
+        "CSV/XLSX: timestamp, price_per_kwh, power column, optional production_units."
     )
     meter_file = st.file_uploader(
         "Sayaç dosyası yükle",
@@ -256,11 +263,13 @@ def run_analysis_tab() -> None:
     d.metric("Load factor", f"{summary.load_factor:.1%}")
 
     st.line_chart(
-        {
-            "Import power (kW)": [item.base_load_kw for item in data.intervals],
-            "Energy price": [item.price_per_kwh for item in data.intervals],
-        },
-        y_label="Value",
+        {"Measured power (kW)": [item.base_load_kw for item in data.intervals]},
+        y_label="Power (kW)",
+        x_label="Interval index",
+    )
+    st.line_chart(
+        {"Energy price": [item.price_per_kwh for item in data.intervals]},
+        y_label="Price per kWh",
         x_label="Interval index",
     )
     st.write(
