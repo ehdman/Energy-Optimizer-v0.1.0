@@ -32,6 +32,29 @@ def test_csv_import_infers_interval_and_production():
     assert summary.energy_per_production_unit == pytest.approx(2.0)
 
 
+def test_accepts_total_import_power_column():
+    data = read_meter_data(
+        "import.csv",
+        (
+            "timestamp,price_per_kwh,import_power_kw\\n"
+            "2026-01-01T00:00:00+03:00,2.0,15.0\\n"
+            "2026-01-01T01:00:00+03:00,2.0,16.0\\n"
+        ).encode("utf-8"),
+    )
+    assert data.power_column == "import_power_kw"
+    assert data.base_load_kw == (15.0, 16.0)
+
+
+def test_rejects_both_power_columns():
+    raw = (
+        "timestamp,price_per_kwh,base_load_kw,import_power_kw\\n"
+        "2026-01-01T00:00:00+03:00,2.0,10.0,15.0\\n"
+        "2026-01-01T01:00:00+03:00,2.0,10.0,16.0\\n"
+    ).encode("utf-8")
+    with pytest.raises(ValueError, match="exactly one power column"):
+        read_meter_data("meter.csv", raw)
+
+
 def test_rejects_naive_timestamps():
     with pytest.raises(ValueError, match="explicit UTC offset"):
         read_meter_data(
