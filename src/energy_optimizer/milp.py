@@ -7,6 +7,12 @@ from math import isfinite
 from .models import OptimizationRequest, OptimizationResult
 from .optimizer import _build_result
 
+# Explicit model budgets prevent oversized user scenarios from exhausting the
+# dashboard process. Large planning problems should be decomposed into rolling
+# horizons or sent to a dedicated solver service.
+MAX_START_CHOICES = 100_000
+MAX_MATRIX_NONZERO_ESTIMATE = 3_000_000
+
 
 def optimize_milp(
     request: OptimizationRequest,
@@ -31,6 +37,42 @@ def optimize_milp(
         )
 
     tasks_by_id = {task.task_id: task for task in request.tasks}
+    candidate_counts = {
+        task.task_id: task.latest_start - task.earliest_start + 1
+        for task in request.tasks
+    }
+    candidate_count = sum(candidate_counts.values())
+    if candidate_count > MAX_START_CHOICES:
+        raise ValueError(
+            f"MILP model has {candidate_count:,} possible start choices; "
+            f"the configured limit is {MAX_START_CHOICES:,}. Narrow operation "
+            "windows or use a shorter rolling horizon."
+        )
+
+    # The upper bound counts possible nonzero coefficients for power, machine,
+    # and dependency constraints before allocating the sparse matrix.
+    occupancy_estimate = sum(
+        candidate_counts[task.task_id] * task.duration_slots
+        for task in request.tasks
+    )
+    precedence_estimate = sum(
+        candidate_counts[task.task_id] * candidate_counts[predecessor_id]
+        for task in request.tasks
+        for predecessor_id in task.predecessors
+    )
+    nonzero_estimate = (
+        candidate_count
+        + len(request.tasks)
+        + 2 * occupancy_estimate
+        + 2 * precedence_estimate
+    )
+    if nonzero_estimate > MAX_MATRIX_NONZERO_ESTIMATE:
+        raise ValueError(
+            f"MILP matrix estimate ({nonzero_estimate:,} nonzero entries) exceeds "
+            f"the configured limit ({MAX_MATRIX_NONZERO_ESTIMATE:,}). "
+            "Reduce the horizon, narrow start windows, or use a rolling horizon."
+        )
+
     choices: list[tuple[str, int, float]] = []
     task_choice_indices: dict[str, list[int]] = {task.task_id: [] for task in request.tasks}
     for task in request.tasks:
@@ -55,15 +97,33 @@ def optimize_milp(
         objective[index] = cost
     task_index = {task.task_id: index for index, task in enumerate(request.tasks)}
     for task in request.tasks:
-        objective[choice_count + task_index[task.task_id]] = penalty * task.priority_weight
+        objective[choice_count + task_index[task.task_id]] = (
+            penalty * task.priority_weight
+        )
 
-    machine_ids = sorted(
-        {task.machine_id for task in request.tasks if task.machine_id is not None}
+    machine_task_counts: dict[str, int] = {}
+    for task in request.tasks:
+        if task.machine_id is not None:
+            machine_task_counts[task.machine_id] = (
+                machine_task_counts.get(task.machine_id, 0) + 1
+            )
+    shared_machine_ids = {
+        machine_id for machine_id, count in machine_task_counts.items() if count > 1
+    }
+    # Only create resource rows for machines used by multiple operations, and
+    # only for slots touched by at least one candidate operation.
+    machine_slots = sorted(
+        {
+            (task.machine_id, slot)
+            for task in request.tasks
+            if task.machine_id in shared_machine_ids
+            for start in range(task.earliest_start, task.latest_start + 1)
+            for slot in range(start, start + task.duration_slots)
+        }
     )
+    first_machine_row = task_count + horizon
     machine_row = {
-        (machine_id, slot): task_count + horizon + machine_index * horizon + slot
-        for machine_index, machine_id in enumerate(machine_ids)
-        for slot in range(horizon)
+        key: first_machine_row + index for index, key in enumerate(machine_slots)
     }
 
     precedence_specs: list[tuple[int, list[int]]] = []
@@ -79,7 +139,7 @@ def optimize_milp(
                 ]
                 precedence_specs.append((successor_choice, compatible))
 
-    first_precedence_row = task_count + horizon + len(machine_ids) * horizon
+    first_precedence_row = first_machine_row + len(machine_slots)
     row_count = first_precedence_row + len(precedence_specs)
     matrix = lil_matrix((row_count, choice_count + task_count), dtype=float)
     lower = np.full(row_count, -np.inf, dtype=float)
@@ -93,22 +153,15 @@ def optimize_milp(
         matrix[row, choice_count + row] = 1.0
         lower[row] = upper[row] = 1.0
 
-    # Site import-power cap.
-    for slot, base_load in enumerate(request.base_load_kw):
-        row = task_count + slot
-        for variable_index, (task_id, start, _) in enumerate(choices):
-            task = tasks_by_id[task_id]
-            if start <= slot < start + task.duration_slots:
-                matrix[row, variable_index] = task.power_kw
-        upper[row] = request.max_power_kw - base_load
-
-    # Single-capacity machines: no two assigned operations can overlap.
+    # Site import-power cap and single-capacity machine resource rows.
     for variable_index, (task_id, start, _) in enumerate(choices):
         task = tasks_by_id[task_id]
-        if task.machine_id is None:
-            continue
         for slot in range(start, start + task.duration_slots):
-            matrix[machine_row[(task.machine_id, slot)], variable_index] = 1.0
+            matrix[task_count + slot, variable_index] = task.power_kw
+            if task.machine_id in shared_machine_ids:
+                matrix[machine_row[(task.machine_id, slot)], variable_index] = 1.0
+    for slot, base_load in enumerate(request.base_load_kw):
+        upper[task_count + slot] = request.max_power_kw - base_load
     for row in machine_row.values():
         upper[row] = 1.0
 
