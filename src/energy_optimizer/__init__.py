@@ -8,8 +8,8 @@ __all__ = [
     "EnergyTask",
     "OptimizationRequest",
     "OptimizationResult",
-    "ScheduledTask",
     "SavingsReport",
+    "ScheduledTask",
     "build_savings_report",
     "optimize_schedule",
 ]
