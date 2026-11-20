@@ -126,7 +126,7 @@ def run_optimizer_tab() -> None:
         report = build_savings_report(request, result)
     except ImportError as exc:
         st.error(str(exc))
-        st.info("MILP için pip install -e ".[optimization]" komutunu çalıştırın.")
+        st.info('MILP için pip install -e ".[optimization]" komutunu çalıştırın.')
         return
     except (ValueError, KeyError, TypeError, OverflowError, RuntimeError) as exc:
         st.error(f"Senaryo işlenemedi: {exc}")
