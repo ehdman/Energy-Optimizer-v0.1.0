@@ -1,87 +1,77 @@
-# Commercial MVP plan
+# Commercial MVP and pilot plan
 
 ## Product definition
 
-**Energy Optimizer Pro** is a decision-support product for industrial sites. It analyzes interval consumption, electricity prices, site power limits, and flexible operating windows to recommend lower-cost operating schedules.
+**Energy Optimizer Pro** is a decision-support product for industrial sites. It analyzes timestamped interval meter data, tariffs, production quantities when available, site power limits, and flexible operating windows to recommend lower-cost schedules.
 
-The first paid use case is not autonomous plant control. It is a measurable, reviewable recommendation service for facilities with flexible loads and usable interval meter data.
+## v0.3.0 pilot capabilities
 
-## Initial ideal customer profile
+- CSV/XLSX meter import with timestamp, interval, unit, and numeric validation
+- Consumption analysis: kWh, nominal tariff cost, average/peak kW, load factor
+- Production-normalized kWh per production unit when comparable production data exists
+- MILP scheduling through SciPy/HiGHS, with a greedy method for quick comparison
+- Modeled scenario savings estimate against an explicit earliest-start reference
+- Before/after metered-period comparison; raw nominal changes and normalized intensity are reported separately
+- Local Streamlit demonstration and downloadable scenario report
 
-Start with one industrial facility that has:
-- interval meter data (15-minute or hourly, with timestamps and units);
-- a known tariff structure and invoice data;
-- controllable or schedulable loads such as selected pumps, compressors, chillers, water heating, thermal processes, or EV charging;
-- an energy manager or operations contact who can validate operating constraints.
+## Initial ideal customer
 
-Do not assume every machine can be shifted. Production sequence, temperature, pressure, quality, maintenance, worker safety, and equipment warranties take precedence over a lower electricity price.
+Start with one industrial site that has:
+- interval meter data (15-minute or hourly, timestamped and timezone-aware);
+- known tariff and invoice information;
+- flexible loads such as selected pumps, compressors, chillers, thermal storage, water heating, or EV charging;
+- a plant engineer or operations contact who can validate process constraints;
+- production-volume data if the customer wants intensity-normalized comparisons.
 
 ## Value proposition
 
-1. Identify when flexible consumption can move to lower-cost periods.
-2. Keep a configured site import-power limit in the proposed schedule.
-3. Show a transparent reference-vs-optimized scenario comparison.
-4. Export a schedule and an auditable assumptions report.
-5. Later, use measured data to verify actual outcomes and distinguish energy savings from tariff arbitrage.
+1. Identify shiftable consumption periods.
+2. Enforce a configured import-power cap in candidate schedules.
+3. Compare alternative schedules transparently.
+4. Reveal measured consumption, peak demand, and production-normalized energy intensity.
+5. Establish a baseline and measurement method before claiming realized savings.
 
-## MVP boundary
+## Pilot boundary
 
-Included in this pilot MVP:
-- local Streamlit dashboard;
-- JSON scenario upload and sample scenario;
-- flexible-load scheduling using the current deterministic heuristic;
-- reference-vs-optimized modeled cost comparison;
-- peak-power profile visualization;
-- downloadable JSON result.
+The dashboard is a local pilot, not a production SaaS deployment. It has no customer login, tenant isolation, database, billing, hosted operations, or industrial control. Do not expose it publicly or use confidential customer files until access control, privacy, retention, transport security, backup, logging, incident response, and customer contracts are implemented and reviewed.
 
-Not included:
-- customer accounts, roles, billing, hosted multi-tenant storage, or production authentication;
-- automatic utility tariff discovery;
-- direct PLC, SCADA, inverter, battery, or machine control;
-- certified energy audit or guaranteed savings;
-- full Turkish electricity invoice calculation (taxes, distribution, reactive penalties, demand billing, contract terms).
+## Pilot workflow
 
-The current dashboard is a local demonstration, not a production SaaS deployment. Never expose it publicly with real customer data until authentication, tenant isolation, transport security, retention, backup, logging, and incident response are implemented and reviewed.
-
-## Pilot method
-
-1. Sign a pilot agreement and define the site, data owner, permitted data, and retention period.
-2. Collect at least several weeks of interval meter data, tariff details, and operating calendars.
-3. Normalize data by timestamp, time zone, production volume, and relevant operating conditions.
-4. Identify shiftable loads with the site engineer; document the earliest/latest start and required duration.
-5. Run the optimizer in shadow mode. Recommendations are reviewed, not automatically applied.
-6. Compare against a documented baseline using equivalent production and operating conditions.
-7. Report modeled savings separately from measured and invoice-verified savings.
-8. Obtain written customer approval before any integration or use of operational data beyond the pilot.
+1. Agree on site scope, data owner, permitted use, access, retention, and deletion terms.
+2. Collect several weeks of timestamped interval data, tariff details, and operating/production calendars.
+3. Keep import_power_kw (total measured site power) distinct from base_load_kw (residual load excluding flexible tasks).
+4. Identify shiftable tasks with the site engineer. Record runtime, allowed start windows, power, and process dependencies.
+5. Run recommendations in shadow mode; operations staff review and approve.
+6. Compare measured periods with production normalization where possible. Record tariff, weather, shift, maintenance, product-mix, and operating-hour differences.
+7. Report modeled schedule benefit separately from measured before/after changes. Do not claim causality unless an agreed measurement and verification method supports it.
+8. Only after written approval consider read-only BMS/meter integration. Control integration requires a separate safety case.
 
 ## Commercial models to test
 
-- **Assessment:** fixed-fee data assessment and optimization report.
-- **Pilot:** fixed-fee, time-limited shadow-mode deployment.
-- **Subscription:** per-site recurring fee for dashboard, reports, and scenario planning.
-- **Integration:** separately scoped fee for meter, BMS, or industrial data connectors.
-- **Performance fee:** consider only after an agreed measurement and verification method is accepted by the customer and legal review is complete.
+- fixed-fee data assessment and optimization report;
+- time-limited fixed-fee shadow-mode pilot;
+- per-site recurring subscription after secure hosted deployment;
+- separately scoped data integration;
+- performance fee only after an agreed, independently reviewable measurement method and legal review.
 
-Do not publish a price list until pilot delivery cost, support burden, willingness to pay, and demonstrable customer value are known. Do not promise a fixed percentage of savings.
+Do not publish a price list or promise a fixed savings percentage before pilot economics and support costs are known.
 
 ## Success metrics
 
-- share of meter intervals with valid data;
-- number of flexible tasks successfully scheduled;
-- modeled cost difference versus the defined reference;
-- measured cost difference after approved operational changes;
-- peak import power (kW) and energy use (kWh);
-- production-normalized energy intensity (kWh per unit produced);
-- recommendation acceptance and override rate;
-- customer-reported operational disruption (target: none).
+- valid meter interval coverage;
+- energy (kWh), average and peak demand (kW), and load factor;
+- percentage of flexible tasks scheduled within their windows;
+- modeled scenario cost difference;
+- measured kWh per production unit;
+- customer-approved measured savings method;
+- recommendation acceptance/override rate;
+- operational disruptions (target: none).
 
 ## Go/no-go gates
 
-A pilot is successful only when:
-- the source data and tariff assumptions are traceable;
-- no configured power or operating constraints are violated in the recommendation;
-- operations staff approve the feasible schedule;
-- modeled and measured outcomes are reported separately;
-- the customer can reproduce the analysis from the exported inputs and report.
-
-Only after several successful pilots should the team invest in hosted SaaS features, automated integrations, and production controls.
+- source data, tariff, units, timestamps, and assumptions are traceable;
+- no configured power or operating constraints are violated;
+- operations staff approve proposed schedules;
+- modeled and measured values are labeled separately;
+- pilot findings can be reproduced from source files and exported reports;
+- privacy and security terms are agreed before customer data is uploaded.
