@@ -24,7 +24,7 @@ from energy_optimizer import (
 )
 
 ROOT = Path(__file__).resolve().parent
-SAMPLE_PATH = ROOT / "examples" / "day_ahead.json"
+SAMPLE_PATH = ROOT / "examples" / "production_line.json"
 MAX_SCENARIO_BYTES = 2 * 1024 * 1024
 MAX_SLOTS = 10_000
 MAX_TASKS = 5_000
@@ -141,7 +141,7 @@ def run_optimizer_tab() -> None:
     st.caption(
         f"{scenario.get('site_name', 'Sample site')} · "
         f"{len(request.prices_per_kwh)} intervals · {request.slot_hours:g} h/interval · "
-        f"{len(request.tasks)} flexible tasks"
+        f"{len(request.tasks)} production operations"
     )
     if meter_data is not None:
         st.success(
@@ -156,7 +156,7 @@ def run_optimizer_tab() -> None:
         "Modeled cost difference",
         f"{report.estimated_savings:,.2f} {currency}",
         f"{report.estimated_savings_percent:.1f}%",
-        help="Scenario estimate versus earliest allowed start for the same scheduled tasks; not measured bill savings.",
+        help="Scenario estimate versus a machine- and precedence-aware reference for the same scheduled operations; not measured bill savings.",
     )
     m4.metric("Optimized peak", f"{result.peak_power_kw:,.2f} kW")
 
@@ -169,6 +169,11 @@ def run_optimizer_tab() -> None:
         f"Solver: {result.solver_name} · {solver_status}"
         + (f" · MIP gap: {result.mip_gap:.4%}" if result.mip_gap is not None else "")
     )
+
+    if result.late_task_count:
+        st.warning(f"{result.late_task_count} scheduled operation(s) miss their soft due slot.")
+    if result.total_delay_penalty:
+        st.caption(f"Delay penalty (separate from electricity cost): {result.total_delay_penalty:,.2f} objective units.")
 
     st.subheader("Power profile")
     st.line_chart(
@@ -186,9 +191,12 @@ def run_optimizer_tab() -> None:
         st.dataframe(
             [
                 {
-                    "Operation": item.name,\n                    "Machine": item.machine_id or "—",\n                    "Priority": item.priority_weight,
+                    "Operation": item.name,
+                    "Machine": item.machine_id or "—",
+                    "Priority": item.priority_weight,
                     "Start interval": item.start_slot,
-                    "End interval (exclusive)": item.end_slot_exclusive,\n                    "Late intervals": item.late_slots,
+                    "End interval (exclusive)": item.end_slot_exclusive,
+                    "Late intervals": item.late_slots,
                     "Energy (kWh)": round(item.energy_kwh, 3),
                     f"Cost ({currency})": round(item.cost, 2),
                 }
@@ -214,10 +222,15 @@ def run_optimizer_tab() -> None:
         "estimated_savings_percent": report.estimated_savings_percent,
         "peak_power_kw": result.peak_power_kw,
         "load_profile_kw": list(result.load_profile_kw),
-        "total_energy_kwh": result.total_energy_kwh,\n        "total_delay_penalty": result.total_delay_penalty,\n        "late_task_count": result.late_task_count,
+        "total_energy_kwh": result.total_energy_kwh,
+        "total_delay_penalty": result.total_delay_penalty,
+        "late_task_count": result.late_task_count,
         "schedule": [
             {
-                "task_id": item.task_id,\n                "machine_id": item.machine_id,\n                "priority_weight": item.priority_weight,\n                "late_slots": item.late_slots,
+                "task_id": item.task_id,
+                "machine_id": item.machine_id,
+                "priority_weight": item.priority_weight,
+                "late_slots": item.late_slots,
                 "start_slot": item.start_slot,
                 "end_slot_exclusive": item.end_slot_exclusive,
                 "energy_kwh": item.energy_kwh,
