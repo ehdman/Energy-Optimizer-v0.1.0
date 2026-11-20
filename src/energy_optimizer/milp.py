@@ -11,7 +11,7 @@ from .optimizer import _build_result
 # dashboard process. Large planning problems should be decomposed into rolling
 # horizons or sent to a dedicated solver service.
 MAX_START_CHOICES = 100_000
-MAX_MATRIX_NONZERO_ESTIMATE = 3_000_000
+MAX_MATRIX_NONZERO_ESTIMATE = 500_000
 
 
 def optimize_milp(
