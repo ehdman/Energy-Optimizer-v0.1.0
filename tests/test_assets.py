@@ -81,11 +81,15 @@ def test_reports_unavoidable_grid_cap_violation() -> None:
 
 
 def test_emissions_are_reported_only_when_factors_are_supplied() -> None:
-    base = dict(
-        base_load_kw=(3.0,), pv_generation_kw=(1.0,), prices_per_kwh=(2.0,),
-        slot_hours=1.0,
-        battery=BatterySpec(capacity_kwh=2.0, max_charge_kw=1.0, max_discharge_kw=1.0),
-    )
+    base = {
+        "base_load_kw": (3.0,),
+        "pv_generation_kw": (1.0,),
+        "prices_per_kwh": (2.0,),
+        "slot_hours": 1.0,
+        "battery": BatterySpec(
+            capacity_kwh=2.0, max_charge_kw=1.0, max_discharge_kw=1.0
+        ),
+    }
     without_factor = simulate_asset_dispatch(AssetDispatchRequest(**base))
     with_factor = simulate_asset_dispatch(AssetDispatchRequest(
         **base, carbon_intensity_kg_per_kwh=(0.4,)
