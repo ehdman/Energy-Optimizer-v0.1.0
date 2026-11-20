@@ -1,49 +1,43 @@
 # Veri sözleşmesi
 
-## Zaman serisi
+## Sayaç dosyası
 
-Bir optimizasyon ufku, N adet eşit süreli zaman diliminden oluşur. Fiyat ve baz yük dizilerinin her ikisi de N elemanlı olmalıdır. Aynı indeks, aynı fiziksel zaman aralığını temsil eder.
+CSV veya XLSX ilk çalışma sayfasında aşağıdaki sütunlar bulunmalıdır:
+
+| Sütun | Gerekli | Birim | Anlam |
+|---|---|---|---|
+| timestamp | Evet | ISO-8601 | Aralığın başlangıç zamanı; UTC offset/timezone zorunlu |
+| price_per_kwh | Evet | para birimi/kWh | Aynı dosyada tutarlı fiyat birimi |
+| import_power_kw veya base_load_kw | Bir güç sütunu zorunlu | kW | Toplam sayaç gücü veya esnek yükler hariç baz güç |
+| production_units | Hayır | işletmenin tanımladığı birim | Aynı aralıkta üretilen miktar |
+
+İki güç sütununu aynı anda kullanmayın. Zaman damgaları artan, tekrarsız ve eşit aralıklı olmalıdır. Aralık uzunluğu ilk iki zaman damgasından hesaplanır; en az iki satır gerekir. Her zaman damgası açık zaman dilimi/UTC offset içermelidir. XLSX dosyasında zaman damgasını timezone içeren ISO-8601 metni olarak saklayın; Excel yerel tarih hücreleri timezone bilgisini korumaz.
+
+production_units kullanılıyorsa her satırda dolu olmalıdır. Negatif güç ve üretim değerleri reddedilir. CSV UTF-8 olmalıdır. Dosya boyutu 10 MB, satır sayısı 100.000 ile sınırlandırılmıştır.
+
+## Güç sütunlarının önemli farkı
+
+- import_power_kw, tüketim analizi ve referans/raporlama dönemi karşılaştırması içindir.
+- base_load_kw, esnek makinelerin güç tüketimini içermeyen rezidüel yük içindir. Optimizasyon bu yüke esnek görevleri yeniden ekler. Toplam sayaç gücünü base_load_kw olarak verirseniz esnek yükleri iki kez sayabilirsiniz.
+
+## Optimizasyon JSON girdisi
 
 | Alan | Tür | Birim | Kural |
 |---|---|---|---|
-| prices_per_kwh | float dizisi | para birimi/kWh | Sonlu sayılar; negatif fiyatlara teknik olarak izin verilir |
-| base_load_kw | float dizisi | kW | Sonlu ve negatif olmayan değerler |
-| slot_hours | float | saat | Sıfırdan büyük |
-| max_power_kw | float | kW | Sıfırdan büyük |
-| tasks | EnergyTask dizisi | — | task_id değerleri benzersiz |
+| prices_per_kwh | sayı dizisi | para birimi/kWh | Sonlu sayılar |
+| base_load_kw | sayı dizisi | kW | Sonlu ve negatif olmayan |
+| slot_hours | sayı | saat | Sıfırdan büyük |
+| max_power_kw | sayı | kW | Sıfırdan büyük |
+| tasks | EnergyTask dizisi | — | Benzersiz task_id |
 
-## Esnek görev
+Her görev: task_id, name, power_kw, duration_slots, earliest_start, latest_start. latest_start dahildir; görev seçilen başlangıçtan itibaren kesintisiz ve bölünmeden çalışır.
 
-| Alan | Tür | Açıklama |
-|---|---|---|
-| task_id | string | Benzersiz görev kimliği |
-| name | string | Okunabilir görev adı |
-| power_kw | float | Görev aktifken çekilen sabit güç |
-| duration_slots | integer | Kesintisiz çalışma slotu sayısı |
-| earliest_start | integer | En erken başlangıç indeksi |
-| latest_start | integer | Dahil edilen en geç başlangıç indeksi |
+## Çözücü sonucu
 
-Bir görev, seçilen başlangıçtan itibaren duration_slots kadar ardışık slotta çalışır. İlk sürümde görev bölünemez ve çalışma sırasında gücü değişmez.
+OptimizationResult çizelgeyi, çizelgelenemeyen görevleri, baz/esnek yük maliyetini, toplam maliyeti, enerji ve tepe gücü döndürür. solver_name, is_optimal ve mip_gap çözücü bilgisini gösterir. Zaman sınırında elde edilen uygulanabilir MILP çözümü optimal olduğu kanıtlanmış çözüm değildir.
 
-## JSON örneği
+## Ölçülen dönem karşılaştırması
 
-examples/day_ahead.json dosyasında uçtan uca örnek bulunur. currency alanı yalnızca raporlama içindir; çekirdek motor fiyat dizisinin para birimini dönüştürmez veya doğrulamaz.
+Referans ve raporlama CSV/XLSX dosyaları aynı zaman aralığı uzunluğunu kullanmalıdır. Ham enerji ve maliyet değişimleri nominal dönem farklarıdır. İki dönemde de production_units varsa toplam kWh/üretim birimi hesaplanır ve raporlama dönemi üretimine göre normalize edilmiş enerji farkı gösterilir.
 
-## Çıktı sözleşmesi
-
-- schedule: başlangıç ve bitiş indeksi, görev enerjisi ve görev maliyeti
-- unscheduled_task_ids: uygun yer bulunamayan görevler
-- base_energy_cost: sabit baz yükün maliyeti
-- scheduled_task_cost: çizelgelenen esnek yüklerin maliyeti
-- total_cost: iki maliyetin toplamı
-- total_energy_kwh: baz ve çizelgelenmiş yüklerin enerji toplamı
-- peak_power_kw: yük profilindeki en yüksek güç
-- load_profile_kw: slot başına toplam güç
-
-## Saat ve zaman dilimi notu
-
-v0.1.0 çekirdek modeli indeks tabanlıdır; tarih, saat dilimi, yaz/kış saati veya gerçek zaman damgası saklamaz. Gerçek tarife ve sayaç verisi adaptörleri eklenirken zaman damgaları açık saat dilimi bilgisiyle normalize edilmelidir. Yaz/kış saati geçişleri test edilmeden saatlik veride varsayım yapılmamalıdır.
-
-## Doğrulama sorumluluğu
-
-Çekirdek model uzunlukları, sayısal değerleri, görev kimliklerini ve ufuk sınırlarını doğrular. Girdi sağlayan katman; ölçüm kalitesi, veri kaynağı, para birimi, tarife dönemi ve zaman damgası tutarlılığını ayrıca doğrulamalıdır.
+Bu analiz tek başına nedensellik veya doğrulanmış tasarruf kanıtı değildir. Hava, çalışma saati, ürün karması, bakım, kapasite kullanımı ve tarife değişimleri ayrıca ele alınmalıdır.
