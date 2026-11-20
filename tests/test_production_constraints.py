@@ -111,3 +111,15 @@ def test_invalid_priority_and_penalty_are_rejected():
         EnergyTask("a", "A", 1.0, 1, 0, 1, priority_weight=0)
     with pytest.raises(ValueError, match="delay_penalty"):
         EnergyTask("b", "B", 1.0, 1, 0, 1, delay_penalty_per_slot=-1.0)
+
+
+
+def test_milp_rejects_oversized_start_choice_model(monkeypatch):
+    import importlib
+
+    milp_module = importlib.import_module("energy_optimizer.milp")
+    monkeypatch.setattr(milp_module, "MAX_START_CHOICES", 1)
+    task = EnergyTask("pump", "Pump", 1.0, 1, 0, 1)
+    scenario = request([task], prices=(1.0, 1.0), base=(0.0, 0.0))
+    with pytest.raises(ValueError, match="possible start choices"):
+        optimize_schedule(scenario, solver="milp")
