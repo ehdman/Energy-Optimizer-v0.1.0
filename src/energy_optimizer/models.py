@@ -30,13 +30,13 @@ class EnergyTask:
         if not isfinite(self.power_kw) or self.power_kw <= 0:
             raise ValueError("power_kw must be finite and greater than zero")
         if not isinstance(self.duration_slots, int) or isinstance(self.duration_slots, bool):
-            raise ValueError("duration_slots must be an integer")
+            raise TypeError("duration_slots must be an integer")
         if self.duration_slots <= 0:
             raise ValueError("duration_slots must be greater than zero")
         if not isinstance(self.earliest_start, int) or isinstance(self.earliest_start, bool):
-            raise ValueError("earliest_start must be an integer")
+            raise TypeError("earliest_start must be an integer")
         if not isinstance(self.latest_start, int) or isinstance(self.latest_start, bool):
-            raise ValueError("latest_start must be an integer")
+            raise TypeError("latest_start must be an integer")
         if self.earliest_start < 0:
             raise ValueError("earliest_start cannot be negative")
         if self.latest_start < self.earliest_start:
