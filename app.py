@@ -35,7 +35,7 @@ def load_scenario(raw: bytes) -> dict[str, Any]:
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("Dosya geçerli UTF-8 JSON değil.") from exc
     if not isinstance(data, dict):
-        raise ValueError("Senaryo kök verisi bir JSON nesnesi olmalı.")
+        raise TypeError("Senaryo kök verisi bir JSON nesnesi olmalı.")
 
     required = {"prices_per_kwh", "base_load_kw", "slot_hours", "max_power_kw", "tasks"}
     missing = required - data.keys()
@@ -43,7 +43,7 @@ def load_scenario(raw: bytes) -> dict[str, Any]:
         raise ValueError(f"Eksik alanlar: {', '.join(sorted(missing))}")
 
     if not isinstance(data["prices_per_kwh"], list) or not isinstance(data["base_load_kw"], list):
-        raise ValueError("prices_per_kwh ve base_load_kw listeler olmalı.")
+        raise TypeError("prices_per_kwh ve base_load_kw listeler olmalı.")
     if len(data["prices_per_kwh"]) > MAX_SLOTS:
         raise ValueError(f"En fazla {MAX_SLOTS} zaman dilimi destekleniyor.")
     if not isinstance(data["tasks"], list) or len(data["tasks"]) > MAX_TASKS:
