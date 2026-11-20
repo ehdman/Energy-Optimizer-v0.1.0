@@ -1,39 +1,40 @@
 # Mimari notları
 
-## İlk prototipin veri akışı
+## v0.3.0 veri akışı
 
-1. Fiyat serisi ve baz yük profili aynı zaman çözünürlüğünde sisteme verilir.
-2. Her esnek yük; güç, ardışık çalışma süresi ve izin verilen başlangıç aralığı ile tanımlanır.
-3. Girdi modelleri boyut, aralık, birimsel temel ve benzersiz kimlik kontrollerini yapar.
-4. Çizelgeleme motoru güç sınırını aşmayan başlangıç aralıklarını tarar ve her görev için en düşük maliyetli yeri seçer.
-5. Sonuç; görev planını, çizelgelenemeyen görevleri, toplam maliyeti, enerji miktarını ve yük profilini döndürür.
+1. Sayaç adaptörü CSV/XLSX dosyasını okur; zaman damgalarını, birimleri ve düzenli aralıkları doğrular.
+2. Analiz katmanı kWh, maliyet, ortalama/tepe kW, yük faktörü ve mevcutsa kWh/üretim birimi hesaplar.
+3. Optimizasyon isteği fiyat serisi, esnek yüklerden arındırılmış baz yük, görevler ve tesis güç sınırından oluşturulur.
+4. Çözücü MILP veya greedy yöntemini kullanır.
+5. Raporlama katmanı model bazlı referans karşılaştırmasını veya iki sayaç dönemi arasındaki ölçülen farkı ayrı ayrı gösterir.
 
 ## Katmanlar
 
-- **Domain modelleri:** Görev, istek ve sonuç veri sınıfları. Dış servislerden bağımsızdır.
-- **Optimizasyon çekirdeği:** Zaman aralıklarını değerlendirir ve çizelge oluşturur.
-- **Girdi/çıktı adaptörleri:** Şu an örnek JSON ile sınırlıdır; sonraki sürümlerde CSV, Excel ve sayaç adaptörleri eklenebilir.
-- **Uygulama katmanı:** Henüz yoktur. API ve arayüz sonraki geliştirme aşamasıdır.
+- **Domain modelleri:** Görev, optimizasyon isteği ve sonuç veri sınıfları.
+- **Ingestion:** CSV/XLSX okuma, ISO-8601 zaman damgası, saat dilimi, düzenli aralık ve sayısal veri doğrulaması.
+- **Analytics:** Tüketim, maliyet, tepe güç ve üretim yoğunluğu göstergeleri.
+- **Optimization:** SciPy/HiGHS MILP ve açıklanabilir greedy alternatif.
+- **Reporting:** Senaryo bazlı maliyet karşılaştırması ve sayaçtan ölçülen dönem karşılaştırması.
+- **Dashboard:** Yerel Streamlit pilot arayüzü; kullanıcı hesabı veya veritabanı içermez.
 
-## Tasarım kararları
+## MILP modeli
 
-- Çekirdek modül harici servis veya veritabanına bağlı değildir.
-- Tüm güç değerleri kW, enerji değerleri kWh, fiyatlar para birimi/kWh cinsindendir.
-- Görevler ilk sürümde bölünemez; çalışma slotları ardışık olmalıdır.
-- Algoritma deterministik ve açıklanabilir bir sezgiseldir; optimalite garantisi vermez.
-- Hiçbir gerçek cihazı kontrol etmez. Donanım entegrasyonu ayrı bir güvenlik katmanı gerektirir.
+Her esnek görev için izin verilen başlangıç noktalarının her biri bir ikili karar değişkenidir. Ayrıca görevin çizelgelenemediğini belirten bir ikili değişken vardır.
 
-## Optimizasyon akışı
+- Her görev tam olarak bir başlangıç seçer veya çizelgelenmedi olarak işaretlenir.
+- Her zaman diliminde baz yük + seçilen esnek görev güçleri tesis sınırını aşamaz.
+- Amaç fonksiyonu önce çizelgelenmeyen görev sayısını en aza indirir; aynı tamamlanan görev sayısı içinde enerji maliyetini en aza indirir.
+- Büyük ceza katsayısı, olası tüm görev maliyetlerinin mutlak toplamından türetilir.
+- Çözücü zaman sınırında uygulanabilir bir çözüm döndürürse sonuç optimal olarak işaretlenmez; solver metadata alanları bu ayrımı taşır.
 
-Görevler önce daha dar başlangıç penceresine göre sıralanır. Her görev için tüm uygun başlangıç noktaları taranır. Baz yük ve daha önce yerleştirilen görevler ile birlikte güç limiti ihlal edilmeyen seçenekler arasından maliyeti en düşük olan seçilir. Eşit maliyette daha erken başlangıç tercih edilir.
+MILP, görevlerin bölünmeden ve sabit güçte çalıştığı v0.3.0 varsayımlarını kullanır. Başlangıç penceresi ve güç kısıtları dışında üretim sırası, sıcaklık, basınç, bakım veya makine bağımlılıkları henüz modellenmez.
 
-Bu greedy yaklaşım, görev yerleştirme sırasından etkilenebilir. Yerel olarak ucuz bir seçim daha sonra başka bir görevin uygun seçeneklerini azaltabilir. Bu nedenle sonuç, global optimum olarak sunulmaz.
+## Sayaç verisi semantiği
 
-## Önerilen sonraki modüller
+- **import_power_kw:** Tesisin sayaçta ölçülen toplam aktif güç serisi. Tüketim analizinde ve dönem karşılaştırmasında kullanılır.
+- **base_load_kw:** Optimizasyonda esnek görevler dışında kalan baz/rezidüel güç serisi. Esnek görev güçlerini ayrıca eklediğimiz için bu seri aynı yükleri zaten içermemelidir.
+- **production_units:** Aynı aralıkta üretilen miktar. Üretim yoğunluğu hesaplamasına yardımcı olur; birim ve ürün karması müşteri tarafından tanımlanmalıdır.
 
-- ingestion: sayaç, CSV/Excel ve tarife adaptörleri
-- forecasting: yük, fiyat ve yenilenebilir üretim tahminleri
-- optimization: MILP/CP-SAT çözücüleri ve sezgisel karşılaştırması
-- api: yetkilendirme, senaryo yönetimi ve optimizasyon endpoint'leri
-- dashboard: maliyet, güç ve emisyon görselleştirmesi
-- integrations: yalnızca açık izin ve güvenli sınırlarla tesis sistemlerine bağlantı
+## Güvenlik sınırı
+
+Dashboard yerel prototiptir. API, kimlik doğrulama, kiracı izolasyonu, kalıcı saklama, denetim izi ve cihaz kontrolü içermez. Gerçek sistemlerle entegrasyon ayrı bir tehdit modeli ve emniyet tasarımı gerektirir.
