@@ -107,3 +107,41 @@ def test_rejects_mismatched_series_and_invalid_battery() -> None:
         )
     with pytest.raises(ValueError):
         BatterySpec(2.0, 1.0, 1.0, initial_soc_kwh=3.0)
+
+
+def test_high_price_discharge_takes_precedence_over_grid_charge() -> None:
+    request = AssetDispatchRequest(
+        base_load_kw=(3.0,),
+        pv_generation_kw=(0.0,),
+        prices_per_kwh=(0.5,),
+        slot_hours=1.0,
+        battery=BatterySpec(
+            capacity_kwh=5.0, max_charge_kw=2.0, max_discharge_kw=2.0,
+            initial_soc_kwh=3.0,
+        ),
+        grid_charge_price_cap=1.0,
+        discharge_price_threshold=0.4,
+    )
+    row = simulate_asset_dispatch(request).slots[0]
+    assert row.battery_discharge_kw == pytest.approx(2.0)
+    assert row.battery_charge_kw == pytest.approx(0.0)
+    assert row.grid_import_kw == pytest.approx(1.0)
+
+
+def test_grid_charging_does_not_create_an_import_cap_violation() -> None:
+    request = AssetDispatchRequest(
+        base_load_kw=(4.0,),
+        pv_generation_kw=(0.0,),
+        prices_per_kwh=(0.1,),
+        slot_hours=1.0,
+        battery=BatterySpec(
+            capacity_kwh=5.0, max_charge_kw=3.0, max_discharge_kw=2.0,
+            initial_soc_kwh=0.0,
+        ),
+        max_grid_import_kw=5.0,
+        grid_charge_price_cap=0.2,
+    )
+    row = simulate_asset_dispatch(request).slots[0]
+    assert row.battery_charge_kw == pytest.approx(1.0)
+    assert row.grid_import_kw == pytest.approx(5.0)
+    assert row.grid_cap_exceeded_kw == pytest.approx(0.0)
