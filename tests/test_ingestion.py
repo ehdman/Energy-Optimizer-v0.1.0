@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 import pytest
+from openpyxl import Workbook
 
 from energy_optimizer import (
     analyze_consumption,
@@ -41,6 +44,22 @@ def test_accepts_total_import_power_column():
     data = read_meter_data("import.csv", raw)
     assert data.power_column == "import_power_kw"
     assert data.base_load_kw == (15.0, 16.0)
+
+
+def test_xlsx_imports_timezone_aware_timestamp_text():
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["timestamp", "price_per_kwh", "import_power_kw", "production_units"])
+    sheet.append(["2026-01-01T00:00:00+03:00", 2.0, 15.0, 5.0])
+    sheet.append(["2026-01-01T01:00:00+03:00", 2.0, 16.0, 6.0])
+    buffer = BytesIO()
+    workbook.save(buffer)
+
+    data = read_meter_data("meter.xlsx", buffer.getvalue())
+    assert data.power_column == "import_power_kw"
+    assert data.slot_hours == pytest.approx(1.0)
+    assert data.base_load_kw == (15.0, 16.0)
+    assert data.production_units == (5.0, 6.0)
 
 
 def test_rejects_both_power_columns():
