@@ -2,79 +2,60 @@
 
 ## Vizyon
 
-Energy Optimizer; bina, tesis veya küçük ölçekli enerji sistemlerinde esnek elektrik tüketimlerini zaman, maliyet ve güç kısıtlarını dikkate alarak planlamaya yardımcı olan açık kaynaklı bir karar destek aracıdır.
+Energy Optimizer Pro; endüstriyel tesislerin zaman damgalı enerji verilerini analiz eden, esnek yüklerin çalışma planını güç sınırları içinde optimize eden ve model tahminleri ile sayaçtan ölçülen dönem farklarını birbirinden ayıran bir karar destek ürünüdür.
 
-## Problem tanımı
+## v0.3.0 kapsamı
 
-Bazı elektrikli yükler belirli bir zaman aralığında çalıştırılabilir. Tüm yükleri ihtiyaç duyulan ilk anda çalıştırmak, daha yüksek tarife dönemlerine denk gelmeye veya tesisin güç sınırını zorlamaya neden olabilir. Sistem, kullanıcı tarafından tanımlanan esneklik sınırları içinde daha düşük maliyetli bir çizelge üretmeyi hedefler.
+- Zaman damgalı CSV/XLSX sayaç dosyası içe aktarma
+- Zaman dilimi, örnekleme aralığı, sayı ve birim doğrulaması
+- kWh, maliyet, ortalama/tepe kW ve yük faktörü analizi
+- İsteğe bağlı üretim miktarı ile kWh/ürün birimi göstergesi
+- Güç sınırını koruyan esnek yük çizelgeleme
+- SciPy/HiGHS MILP ve hızlı greedy çözücü seçenekleri
+- Referans çalışma planına göre model bazlı maliyet karşılaştırması
+- Üretim normalizasyonu destekli sayaç dönemi karşılaştırması
+- Yerel Streamlit pilot paneli ve JSON rapor çıktısı
 
 ## Hedef kullanıcılar
 
-- Enerji tüketimini takip eden bina ve tesis yöneticileri
-- Enerji verimliliği çalışması yapan mühendisler ve araştırmacılar
-- Esnek yük çizelgelemesini öğrenmek isteyen geliştiriciler
-- Akademik ve eğitim amaçlı optimizasyon çalışmaları
+- Enerji tüketimini takip eden fabrika ve tesis yöneticileri
+- Enerji yöneticileri ve proses mühendisleri
+- Enerji verimliliği danışmanları ve araştırmacılar
+- Esnek yük çizelgelemesi gerektiren işletmeler
 
-## v0.1.0 dahilindekiler
+## Kapsam dışı olanlar
 
-1. Aynı zaman çözünürlüğünde enerji fiyatı ve baz yük dizileri.
-2. Güç, süre ve izin verilen başlangıç aralığı ile tanımlanan esnek görevler.
-3. Azami toplam güç kısıtı.
-4. Görevlerin bölünmeden, ardışık zaman dilimlerinde çalıştırılması.
-5. Çizelge, çizelgelenemeyen görevler, enerji, maliyet ve tepe güç çıktıları.
-6. JSON örneği, Python API'si ve otomatik testler.
+- Tam elektrik faturası hesaplama ve tüm vergi/dağıtım/talep/reactive kalemleri
+- Otomatik piyasa fiyatı çekme veya tahmin hizmeti
+- Üretim sıralaması, makine bağımlılıkları, sıcaklık, basınç ve kalite kısıtları
+- Batarya, PV, reaktif güç, talep tarafı katılımı veya mikroşebeke optimizasyonu
+- Kullanıcı hesapları, çok kiracılı SaaS, ödeme ve abonelik altyapısı
+- Gerçek sayaç, BMS, PLC, SCADA veya makinelere yazma/kontrol bağlantısı
+- Sertifikalı enerji etüdü veya garanti edilmiş tasarruf beyanı
 
-## v0.1.0 kapsamı dışındakiler
+## Temel veri varsayımları
 
-- Gerçek zamanlı sayaç veya SCADA bağlantısı
-- Fiziksel ekipmanlara doğrudan kontrol komutu gönderme
-- Kullanıcı hesabı, çok kiracılı yetkilendirme veya bulut servisi
-- Elektrik piyasasından otomatik fiyat çekme
-- Yük, fiyat veya yenilenebilir üretim tahmini
-- Batarya şarj/deşarj, araç rotası veya reaktif güç optimizasyonu
-- Global optimum garantisi veren çözücü
+- Güç kW, enerji kWh, süre saat, fiyat para birimi/kWh olarak ele alınır.
+- Sayaç zaman damgaları ISO-8601 ve timezone/UTC offset içermelidir.
+- Örnekleme aralığı düzenli olmalıdır; en az iki satırla çıkarılır.
+- import_power_kw toplam tesis sayaç gücünü; base_load_kw ise esnek görevler dışındaki rezidüel gücü ifade eder.
+- Esnek görevler sabit güçte, kesintisiz ve bölünmeden çalışır.
+- production_units aynı aralıktaki üretim miktarıdır ve iki dönem arasında aynı tanım/birimde olmalıdır.
 
-Bunlar gelecekte ayrı modüller olarak değerlendirilebilir; v0.1.0 davranışı olarak kabul edilmemelidir.
+## Tasarruf ve ölçüm sınırı
 
-## Girdiler ve varsayımlar
+Model bazlı maliyet farkı, optimize edilmiş çizelgeyi aynı esnek görevler için en erken başlangıç referansıyla karşılaştırır. Sayaç dönemi karşılaştırması gerçek ölçüm dosyalarındaki nominal kWh ve maliyet farklarını gösterir. Üretim verisi mevcutsa kWh/üretim birimi ile normalize eder.
 
-- Fiyatlar tek bir para birimi/kWh ölçeğindedir.
-- Güç kW, enerji kWh, süre saat veya zaman dilimi sayısı ile ifade edilir.
-- Fiyat ve baz yük dizilerinin uzunluğu eşittir ve aynı zaman aralıklarını temsil eder.
-- Her görev aynı güçte ve kesintisiz çalışır.
-- Görev başlangıç aralığının son indeksi dahildir.
-- Kullanıcı fiyat, baz yük ve tesis gücü verilerinin doğruluğundan sorumludur.
+Bu karşılaştırmalar tek başına optimizasyon yazılımının tasarrufa neden olduğunu kanıtlamaz. Hava, üretim karması, çalışma saatleri, bakım, tarife, vardiya ve proses değişimleri müşteriyle birlikte değerlendirilmelidir.
 
-## Çıktılar
+## Emniyet
 
-- Her görevin başlangıç ve bitiş slotu
-- Görev enerji miktarı ve maliyeti
-- Çizelgelenemeyen görev kimlikleri
-- Baz yük ve esnek yüklerin toplam maliyeti
-- Toplam enerji, zaman bazlı yük profili ve tepe güç
+v0.3.0 yalnızca karar destek çıktısı üretir. Gerçek ekipmanları kontrol etmez. Herhangi bir otomatik kontrol entegrasyonu ayrı tehdit modeli, least-privilege erişim, bağımsız emniyet kilitleri, operatör onayı, geri alma prosedürü ve saha mühendisliği incelemesi gerektirir.
 
-## Kabul ölçütleri
+## Sonraki geliştirme aşamaları
 
-- Geçersiz veya uyumsuz veri girdileri anlaşılır hata ile reddedilir.
-- Çizelgeleme sonucu azami güç sınırını aşmaz.
-- Görevler kendilerine tanımlanan pencerenin dışında başlatılmaz.
-- Maliyet ve enerji hesapları birimlerle tutarlı olur.
-- Aynı girdi aynı sonucu üretir.
-- Otomatik testler ve CI iş akışı başarılı olur.
-
-## Geliştirme aşamaları
-
-### Aşama 1 — Çekirdek çizelgeleme
-Veri modelleri, sezgisel algoritma, örnek senaryo ve testler.
-
-### Aşama 2 — Veri alımı
-CSV/Excel, sayaç ölçümleri, zaman damgası ve tarife adaptörleri. Eksik veri ve saat dilimi politikası bu aşamada tanımlanır.
-
-### Aşama 3 — Tahmin ve gelişmiş optimizasyon
-Talep/fiyat tahmini, MILP veya CP-SAT çözücüsü, sezgisel yöntemle karşılaştırma ve optimalite boşluğu raporu.
-
-### Aşama 4 — Uygulama katmanı
-Senaryo saklama, API, görselleştirme ve kullanıcı yönetimi. Kimlik doğrulama ve yetkilendirme bu aşamada tasarlanır.
-
-### Aşama 5 — Güvenli entegrasyon
-Salt okunur izleme ile başlayıp, bağımsız emniyet kontrolleri ve operatör onayı olmadan otomatik cihaz kontrolüne geçilmez.
+1. Tam tarife/fatura modeli ve resmi veri adaptörleri.
+2. Yük, fiyat, PV üretimi ve hava koşulları tahmini.
+3. MILP modeline proses öncelikleri, süreklilik ve ekipman kısıtları ekleme.
+4. Güvenli API, müşteri hesapları, kiracı izolasyonu ve barındırılan SaaS.
+5. Önce salt okunur sayaç/BMS entegrasyonları; kontrol ancak ayrı emniyet onayıyla.
