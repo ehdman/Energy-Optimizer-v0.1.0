@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 from .models import EnergyTask, OptimizationRequest, OptimizationResult
 
@@ -83,7 +84,7 @@ def build_savings_report(
     machine_predecessors: dict[str, set[str]] = {}
     for sequence in machine_sequences.values():
         sequence.sort()
-        for previous, current in zip(sequence, sequence[1:]):
+        for previous, current in pairwise(sequence):
             machine_predecessors.setdefault(current[1], set()).add(previous[1])
 
     reference_load = list(request.base_load_kw)
