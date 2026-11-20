@@ -1,4 +1,4 @@
-"""Validated input and output models for the scheduling engine."""
+"""Validated domain models for energy and production-aware scheduling."""
 
 from __future__ import annotations
 
@@ -8,13 +8,19 @@ from math import isfinite
 
 @dataclass(frozen=True, slots=True)
 class EnergyTask:
-    """A non-preemptive, flexible electrical load."""
+    """A non-preemptive electrical task or production operation."""
+
     task_id: str
     name: str
     power_kw: float
     duration_slots: int
     earliest_start: int
     latest_start: int
+    machine_id: str | None = None
+    predecessors: tuple[str, ...] = ()
+    due_slot: int | None = None
+    priority_weight: int = 1
+    delay_penalty_per_slot: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.task_id.strip():
@@ -23,12 +29,39 @@ class EnergyTask:
             raise ValueError("name cannot be empty")
         if not isfinite(self.power_kw) or self.power_kw <= 0:
             raise ValueError("power_kw must be finite and greater than zero")
+        if not isinstance(self.duration_slots, int) or isinstance(self.duration_slots, bool):
+            raise ValueError("duration_slots must be an integer")
         if self.duration_slots <= 0:
             raise ValueError("duration_slots must be greater than zero")
+        if not isinstance(self.earliest_start, int) or isinstance(self.earliest_start, bool):
+            raise ValueError("earliest_start must be an integer")
+        if not isinstance(self.latest_start, int) or isinstance(self.latest_start, bool):
+            raise ValueError("latest_start must be an integer")
         if self.earliest_start < 0:
             raise ValueError("earliest_start cannot be negative")
         if self.latest_start < self.earliest_start:
             raise ValueError("latest_start must be >= earliest_start")
+        if self.machine_id is not None and not self.machine_id.strip():
+            raise ValueError("machine_id cannot be empty when provided")
+        if len(self.predecessors) != len(set(self.predecessors)):
+            raise ValueError("predecessors must not contain duplicate task IDs")
+        if any(not predecessor.strip() for predecessor in self.predecessors):
+            raise ValueError("predecessor task IDs cannot be empty")
+        if self.task_id in self.predecessors:
+            raise ValueError("a task cannot depend on itself")
+        if self.due_slot is not None:
+            if not isinstance(self.due_slot, int) or isinstance(self.due_slot, bool):
+                raise ValueError("due_slot must be an integer when provided")
+            if self.due_slot < 0:
+                raise ValueError("due_slot cannot be negative")
+        if (
+            not isinstance(self.priority_weight, int)
+            or isinstance(self.priority_weight, bool)
+            or not 1 <= self.priority_weight <= 1000
+        ):
+            raise ValueError("priority_weight must be an integer from 1 to 1000")
+        if not isfinite(self.delay_penalty_per_slot) or self.delay_penalty_per_slot < 0:
+            raise ValueError("delay_penalty_per_slot must be finite and non-negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,9 +91,37 @@ class OptimizationRequest:
         ids = [task.task_id for task in self.tasks]
         if len(ids) != len(set(ids)):
             raise ValueError("task_id values must be unique")
+        tasks_by_id = {task.task_id: task for task in self.tasks}
         for task in self.tasks:
             if task.latest_start + task.duration_slots > horizon:
                 raise ValueError(f"task {task.task_id!r} does not fit inside the horizon")
+            missing = set(task.predecessors) - tasks_by_id.keys()
+            if missing:
+                raise ValueError(
+                    f"task {task.task_id!r} references unknown predecessor(s): "
+                    f"{', '.join(sorted(missing))}"
+                )
+        _validate_dependency_graph(self.tasks)
+
+
+def _validate_dependency_graph(tasks: tuple[EnergyTask, ...]) -> None:
+    """Reject cyclic operation graphs before solving."""
+    successors: dict[str, list[str]] = {task.task_id: [] for task in tasks}
+    indegree = {task.task_id: len(task.predecessors) for task in tasks}
+    for task in tasks:
+        for predecessor in task.predecessors:
+            successors[predecessor].append(task.task_id)
+    ready = [task_id for task_id, degree in indegree.items() if degree == 0]
+    visited = 0
+    while ready:
+        current = ready.pop()
+        visited += 1
+        for successor in successors[current]:
+            indegree[successor] -= 1
+            if indegree[successor] == 0:
+                ready.append(successor)
+    if visited != len(tasks):
+        raise ValueError("task predecessor relationships must be acyclic")
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +132,10 @@ class ScheduledTask:
     end_slot_exclusive: int
     energy_kwh: float
     cost: float
+    machine_id: str | None = None
+    priority_weight: int = 1
+    late_slots: int = 0
+    delay_penalty: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,3 +151,6 @@ class OptimizationResult:
     solver_name: str = "greedy"
     is_optimal: bool = False
     mip_gap: float | None = None
+    total_delay_penalty: float = 0.0
+    scheduled_priority_weight: int = 0
+    late_task_count: int = 0
