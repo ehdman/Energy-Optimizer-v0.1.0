@@ -13,6 +13,8 @@ from typing import Any
 
 import streamlit as st
 
+from energy_optimizer.ui import apply_theme
+
 from energy_optimizer import (
     EnergyTask,
     OptimizationRequest,
@@ -81,27 +83,26 @@ def build_request(data: dict[str, Any]) -> OptimizationRequest:
 def run_optimizer_tab() -> None:
     st.subheader("Üretim ve enerji planlaması")
     st.caption(
-        "JSON dosyası operasyonları, makine kısıtlarını ve tesis güç sınırını tanımlar. Sayaç CSV/XLSX dosyası "
-        "yüklenirse fiyat ve baz yük serisi sayaç dosyasından alınır."
+        "Üretim görevlerini ve tesis güç sınırını içeren senaryoyu yükleyin. İsterseniz sayaç verisiyle gerçek tüketim profilinizi kullanın."
     )
     col_a, col_b = st.columns(2)
     with col_a:
         scenario_file = st.file_uploader(
-            "Senaryo JSON (görevler ve güç sınırı)",
+            "Üretim senaryosu (JSON)",
             type=["json"],
             key="scenario_json",
         )
     with col_b:
         meter_file = st.file_uploader(
-            "Sayaç verisi CSV / XLSX (isteğe bağlı)",
+            "Sayaç verisi (isteğe bağlı)",
             type=["csv", "xlsx", "xlsm"],
             key="optimization_meter",
         )
 
     solver_label = st.selectbox(
         "Optimizasyon yöntemi",
-        ["MILP (SciPy / HiGHS)", "Greedy (hızlı sezgisel)"],
-        help="MILP matematiksel model kurar. Greedy daha hızlıdır ancak optimalite garantisi vermez.",
+        ["MILP (daha kapsamlı)", "Greedy (daha hızlı)"],
+        help="MILP matematiksel optimizasyon kullanır. Greedy hızlı bir sezgiseldir; en iyi sonucu garanti etmez.",
     )
     solver = "milp" if solver_label.startswith("MILP") else "greedy"
 
@@ -150,15 +151,15 @@ def run_optimizer_tab() -> None:
         )
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Reference cost", f"{report.reference_cost:,.2f} {currency}")
-    m2.metric("Optimized cost", f"{report.optimized_cost:,.2f} {currency}")
+    m1.metric("Referans maliyet", f"{report.reference_cost:,.2f} {currency}")
+    m2.metric("Optimize edilmiş maliyet", f"{report.optimized_cost:,.2f} {currency}")
     m3.metric(
-        "Modeled cost difference",
+        "Model tahmini fark",
         f"{report.estimated_savings:,.2f} {currency}",
         f"{report.estimated_savings_percent:.1f}%",
         help="Scenario estimate versus a machine- and precedence-aware reference for the same scheduled operations; not measured bill savings.",
     )
-    m4.metric("Optimized peak", f"{result.peak_power_kw:,.2f} kW")
+    m4.metric("Optimize edilmiş tepe güç", f"{result.peak_power_kw:,.2f} kW")
 
     solver_status = (
         "Optimality proven"
@@ -175,29 +176,29 @@ def run_optimizer_tab() -> None:
     if result.total_delay_penalty:
         st.caption(f"Delay penalty (separate from electricity cost): {result.total_delay_penalty:,.2f} objective units.")
 
-    st.subheader("Power profile")
+    st.subheader("Güç profili")
     st.line_chart(
         {
-            "Reference (kW)": list(report.reference_load_profile_kw),
-            "Optimized (kW)": list(result.load_profile_kw),
-            "Power cap (kW)": [request.max_power_kw] * len(result.load_profile_kw),
+            "Mevcut plan (kW)": list(report.reference_load_profile_kw),
+            "Optimize plan (kW)": list(result.load_profile_kw),
+            "Tesis güç sınırı (kW)": [request.max_power_kw] * len(result.load_profile_kw),
         },
         y_label="Power (kW)",
         x_label="Interval index",
     )
 
-    st.subheader("Recommended schedule")
+    st.subheader("Önerilen üretim planı")
     if result.schedule:
         st.dataframe(
             [
                 {
-                    "Operation": item.name,
-                    "Machine": item.machine_id or "—",
-                    "Priority": item.priority_weight,
-                    "Start interval": item.start_slot,
-                    "End interval (exclusive)": item.end_slot_exclusive,
-                    "Late intervals": item.late_slots,
-                    "Energy (kWh)": round(item.energy_kwh, 3),
+                    "Operasyon": item.name,
+                    "Makine": item.machine_id or "—",
+                    "Öncelik": item.priority_weight,
+                    "Başlangıç aralığı": item.start_slot,
+                    "Bitiş aralığı": item.end_slot_exclusive,
+                    "Gecikme aralığı": item.late_slots,
+                    "Enerji (kWh)": round(item.energy_kwh, 3),
                     f"Cost ({currency})": round(item.cost, 2),
                 }
                 for item in result.schedule
@@ -246,7 +247,7 @@ def run_optimizer_tab() -> None:
         ],
     }
     st.download_button(
-        "Download scenario report (JSON)",
+        "Senaryo raporunu indir (JSON)",
         json.dumps(payload, ensure_ascii=False, indent=2),
         file_name="energy-optimizer-scenario-report.json",
         mime="application/json",
@@ -260,7 +261,7 @@ def run_analysis_tab() -> None:
         "CSV/XLSX: timestamp, price_per_kwh, power column, optional production_units."
     )
     meter_file = st.file_uploader(
-        "Sayaç dosyası yükle",
+        "Sayaç dosyasını yükleyin",
         type=["csv", "xlsx", "xlsm"],
         key="analysis_meter",
     )
@@ -275,18 +276,18 @@ def run_analysis_tab() -> None:
         return
 
     a, b, c, d = st.columns(4)
-    a.metric("Total energy", f"{summary.total_energy_kwh:,.2f} kWh")
-    b.metric("Metered cost", f"{summary.total_cost:,.2f}")
-    c.metric("Peak import", f"{summary.peak_power_kw:,.2f} kW")
-    d.metric("Load factor", f"{summary.load_factor:.1%}")
+    a.metric("Toplam enerji", f"{summary.total_energy_kwh:,.2f} kWh")
+    b.metric("Ölçülen maliyet", f"{summary.total_cost:,.2f}")
+    c.metric("En yüksek şebeke gücü", f"{summary.peak_power_kw:,.2f} kW")
+    d.metric("Yük faktörü", f"{summary.load_factor:.1%}")
 
     st.line_chart(
-        {"Measured power (kW)": [item.base_load_kw for item in data.intervals]},
+        {"Ölçülen güç (kW)": [item.base_load_kw for item in data.intervals]},
         y_label="Power (kW)",
         x_label="Interval index",
     )
     st.line_chart(
-        {"Energy price": [item.price_per_kwh for item in data.intervals]},
+        {"Enerji birim fiyatı": [item.price_per_kwh for item in data.intervals]},
         y_label="Price per kWh",
         x_label="Interval index",
     )
@@ -300,7 +301,7 @@ def run_analysis_tab() -> None:
             "Energy intensity",
             f"{summary.energy_per_production_unit:.4f} kWh / production unit",
         )
-    st.write("Peak-demand timestamps")
+    st.write("En yüksek tüketim zamanları")
     st.dataframe(
         [{"Timestamp": value} for value in summary.peak_timestamps],
         hide_index=True,
@@ -340,27 +341,27 @@ def run_comparison_tab() -> None:
 
     m1, m2, m3 = st.columns(3)
     m1.metric(
-        "Raw energy difference",
+        "Enerji değişimi",
         f"{comparison.raw_energy_change_kwh:,.2f} kWh",
         f"{comparison.raw_energy_change_percent:.1f}%",
     )
     m2.metric(
-        "Nominal cost difference",
+        "Maliyet değişimi",
         f"{comparison.raw_cost_change:,.2f}",
         f"{comparison.raw_cost_change_percent:.1f}%",
     )
     if comparison.normalized_energy_savings_kwh is not None:
         m3.metric(
-            "Production-normalized energy difference",
+            "Üretime göre düzeltilmiş enerji farkı",
             f"{comparison.normalized_energy_savings_kwh:,.2f} kWh",
             f"{comparison.normalized_energy_savings_percent:.1f}%",
         )
         st.metric(
-            "Normalized cost estimate at reporting-period average price",
+            "Raporlama dönemi fiyatıyla normalize maliyet tahmini",
             f"{comparison.normalized_cost_savings_estimate:,.2f}",
         )
     else:
-        m3.metric("Production-normalized difference", "Not available")
+        m3.metric("Üretime göre düzeltilmiş fark", "Not available")
     st.warning(comparison.interpretation)
     st.caption(
         "Raw cost differences are nominal and may reflect tariff changes or different "
@@ -370,19 +371,37 @@ def run_comparison_tab() -> None:
 
 def main() -> None:
     st.set_page_config(
-        page_title="Energy Optimizer | Factory Pilot",
+        page_title="Energy Optimizer",
         page_icon="⚡",
         layout="wide",
+        initial_sidebar_state="expanded",
     )
-    st.title("⚡ Energy Optimizer")
-    st.caption("Industrial energy analytics · Load scheduling · Pilot workspace")
+    apply_theme(st)
+    st.markdown(
+        """
+        <div class="eo-topbar">
+          <div class="eo-brand-mark">⚡</div>
+          <div>
+            <div class="eo-brand-name">Energy Optimizer</div>
+            <div class="eo-brand-subtitle">Enerji ve üretim karar platformu</div>
+          </div>
+          <div class="eo-topbar-spacer"></div>
+          <div class="eo-status"><span></span> Yerel pilot sürüm</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.title("Tesisin enerji görünümü")
+    st.caption("Tüketimi anlayın, üretimi planlayın, senaryoları karşılaştırın.")
+
     st.info(
-        "Local pilot application. No customer login, tenant isolation, database, or device "
-        "control is included. Do not expose this demo publicly or upload confidential "
-        "customer data to an unreviewed deployment."
+        "Bu sürüm yerel pilot içindir. Henüz kullanıcı girişi, müşteri verisi izolasyonu "
+        "ve fiziksel ekipman kontrolü bulunmaz. Gizli müşteri verilerini herkese açık "
+        "bir dağıtıma yüklemeyin.",
+        icon="🔒",
     )
     optimization_tab, analysis_tab, comparison_tab = st.tabs(
-        ["Optimization", "Meter analysis", "Measured comparison"]
+        ["⚙️  Optimizasyon", "📊  Tüketim analizi", "↔️  Dönem karşılaştırması"]
     )
     with optimization_tab:
         run_optimizer_tab()
