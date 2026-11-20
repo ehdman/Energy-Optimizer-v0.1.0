@@ -1,21 +1,20 @@
 # Energy Optimizer
 
-**Energy Optimizer Pro** is an early-stage, factory-focused energy scheduling and decision-support product. It analyzes energy prices, a fixed site load profile, flexible operating tasks, and a site power limit to recommend lower-cost schedules.
+**Energy Optimizer Pro** is an early-stage industrial energy analytics and scheduling product. Version 0.3.0 adds timestamped CSV/XLSX meter-data import, consumption analysis, a SciPy/HiGHS MILP scheduler, and production-normalized comparisons between measured periods.
 
-> **Status: pilot MVP (v0.2.0).** The current scheduling engine is a deterministic heuristic, not a globally optimal solver. The dashboard produces modeled scenario comparisons, not audited savings or guaranteed bill reductions. It does not control physical equipment.
+> **Status: pilot MVP (v0.3.0).** This is decision-support software, not a certified energy audit or guaranteed savings product. It does not control physical equipment. Realized savings require a site-approved measurement and verification method.
 
-## What is included
+## Features
 
-- Python scheduling core with input validation
-- Power-cap-aware scheduling of non-preemptive flexible loads
-- Reference-vs-optimized cost comparison for the same successfully scheduled work
-- Peak-power profile comparison
-- Local Streamlit dashboard with JSON scenario upload
-- Downloadable JSON optimization report
-- Pilot scope, data contract, architecture, commercial plan, and pilot-security documentation
-- Automated tests and GitHub Actions CI
+- Import timestamped interval meter data from UTF-8 CSV or XLSX
+- Validate timezone-aware timestamps, regular intervals, numeric fields, and optional production quantities
+- Analyze kWh, cost, average and peak kW, load factor, and kWh per production unit
+- Schedule flexible loads under an import-power cap
+- Use SciPy/HiGHS mixed-integer linear programming (MILP) or the greedy heuristic
+- Compare measured baseline and reporting periods; normalize energy intensity when production data exists
+- Explore scenarios in a local Streamlit dashboard and export a JSON report
 
-## Run the local pilot dashboard
+## Install and run
 
 Python 3.11 or newer is required.
 
@@ -28,42 +27,49 @@ python -m venv .venv
 # macOS / Linux
 source .venv/bin/activate
 
-pip install -e ".[app,dev]"
+pip install -e ".[app,optimization,dev]"
 streamlit run app.py
 ```
 
-The dashboard opens in your browser and loads the sample scenario by default. Upload a JSON scenario to test your own modeled assumptions. The schema is demonstrated in [examples/day_ahead.json](examples/day_ahead.json).
+The dashboard includes three workspaces: scenario optimization, meter analysis, and measured-period comparison.
 
-## Run tests and the command-line example
+## Meter file format
+
+Required columns:
+- `timestamp`: ISO-8601 timestamp with an explicit UTC offset, for example `2026-01-01T00:00:00+03:00`
+- `price_per_kwh`: price in one consistent currency per kWh
+- `base_load_kw`: measured average import power in kW for the interval
+
+Optional column:
+- `production_units`: quantity produced during the interval; if present, it must be populated on every row
+
+Timestamps must be strictly increasing and evenly spaced. At least two rows are needed to infer interval length. CSV and XLSX are supported; XLSX reads the first worksheet. The example schema is in [examples/meter-template.csv](examples/meter-template.csv).
+
+## Optimization methods
+
+- `greedy`: fast deterministic heuristic; does not guarantee an optimal solution.
+- `milp`: SciPy/HiGHS mixed-integer solver; install the optimization extra.
+- `auto`: attempts MILP and falls back to greedy if SciPy is unavailable.
+
+The MILP first minimizes the number of unscheduled tasks, then minimizes energy cost among schedules with the same number of scheduled tasks. It enforces the site power cap in every interval. A time-limited solve can return a feasible incumbent that is not proven optimal; inspect the solver status in the result.
+
+## Savings and measurement limits
+
+The scenario report compares the same successfully scheduled tasks against an earliest-allowed-start reference. It is a modeled estimate, not an invoice saving.
+
+Measured-period comparison shows raw energy and nominal cost differences. When both files include production quantities, it also compares kWh per production unit and estimates normalized energy difference at reporting-period production. That comparison does not establish causality: weather, operating hours, product mix, maintenance, tariffs, and other conditions may change. A customer pilot should document a baseline and agreed measurement and verification method.
+
+The current model does not fully calculate Turkish electricity invoices, including all taxes, distribution, reactive energy, demand charges, contract terms, or other tariff components.
+
+## Run checks
 
 ```bash
-pip install -e ".[dev]"
-python examples/run_example.py
-pytest
+python -m compileall -q app.py src/energy_optimizer
 ruff check .
+pytest
 ```
 
-## How the optimizer works
-
-1. The site supplies a price series, fixed/base load series, slot length, and maximum import-power limit.
-2. Each flexible task defines its power, continuous runtime, and earliest/latest allowed start.
-3. The engine evaluates feasible start windows and places tasks into lower-cost periods without exceeding the configured power cap.
-4. The reporting module compares the optimized schedule against an earliest-allowed-start reference for the same tasks that were successfully scheduled.
-
-The comparison is a model estimate. It may not equal an electricity invoice because the current MVP does not fully model taxes, distribution charges, reactive energy, demand charges, contract terms, production volume, weather, or operational constraints. Unscheduled tasks are excluded from both sides of the savings comparison so omitted work is not incorrectly reported as savings.
-
-## Project structure
-
-```text
-app.py                          # Local pilot dashboard
-src/energy_optimizer/            # Domain models, heuristic, and reporting
-examples/                       # Sample scenario and meter-data template
-tests/                           # Automated tests
-docs/                             # Product scope, architecture, and pilot plan
-.github/workflows/               # Continuous integration
-```
-
-## Product and pilot documents
+## Product and safety documents
 
 - [Project scope](docs/project-scope.md)
 - [Commercial MVP and pilot plan](docs/commercial-mvp.md)
@@ -75,25 +81,15 @@ docs/                             # Product scope, architecture, and pilot plan
 
 ## Roadmap
 
-- [x] Core flexible-load scheduling heuristic
-- [x] Transparent reference-vs-optimized scenario report
-- [x] Local pilot dashboard and JSON scenario upload
-- [x] Downloadable optimization report
-- [ ] Validated CSV/Excel meter-data ingestion with timestamps and time zones
+- [x] CSV/XLSX interval meter import and validation
+- [x] Consumption and production-intensity analytics
+- [x] MILP scheduler and greedy fallback
+- [x] Measured-period comparison with optional production normalization
 - [ ] Full tariff and invoice model
-- [ ] Exact/near-optimal MILP or CP-SAT solver and benchmark suite
 - [ ] Forecasting for load, prices, and renewable generation
-- [ ] Customer accounts, role-based access, tenant isolation, and secure hosted deployment
+- [ ] API, customer accounts, tenant isolation, and secure hosted deployment
 - [ ] Read-only meter/BMS integrations
-- [ ] Operator-approved, safety-reviewed control integrations (separate project phase)
-
-## Commercial positioning
-
-The first product offer is a factory energy optimization pilot: analyze customer-authorized interval data, model flexible loads, produce an auditable recommendation, and measure the outcome under agreed conditions. Do not promise a fixed savings percentage. See [docs/commercial-mvp.md](docs/commercial-mvp.md).
-
-## Safety and data handling
-
-This version is a local decision-support demo. It has no customer authentication, multi-tenant database, production hosting controls, or machine-control integration. Do not upload confidential customer data to an internet-accessible deployment. Review [docs/pilot-security.md](docs/pilot-security.md) before any hosted pilot.
+- [ ] Operator-approved, safety-reviewed control integrations (separate phase)
 
 ## License
 
