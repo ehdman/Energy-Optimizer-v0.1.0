@@ -43,7 +43,7 @@ Required columns:
 Optional column:
 - `production_units`: quantity produced during the interval; if present, it must be populated on every row
 
-Timestamps must be strictly increasing and evenly spaced. At least two rows are needed to infer interval length. CSV and XLSX are supported; XLSX reads the first worksheet. The example schema is in [examples/meter-template.csv](examples/meter-template.csv).
+Timestamps must be strictly increasing and evenly spaced. At least two rows are needed to infer interval length. CSV and XLSX are supported; XLSX reads the first worksheet. The total site meter template is [examples/meter-template.csv](examples/meter-template.csv); the optimization-only residual load template is [examples/optimizer-base-load-template.csv](examples/optimizer-base-load-template.csv). Do not feed total import power into the optimizer as base load when the flexible tasks are already included in that measurement.
 
 ## Optimization methods
 
@@ -75,7 +75,7 @@ pytest
 - [Commercial MVP and pilot plan](docs/commercial-mvp.md)
 - [Pilot security and customer data](docs/pilot-security.md)
 - [Architecture](docs/architecture.md)
-- [Data contract](docs/data-contract.md)
+- [Data contract](docs/data-contract.md)\n- [MILP optimization model](docs/optimization-model.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
