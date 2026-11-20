@@ -52,6 +52,7 @@ def load_scenario(raw: bytes) -> dict[str, Any]:
 
 
 def build_request(data: dict[str, Any]) -> OptimizationRequest:
+    """Create typed domain models from a decoded scenario."""
     tasks = tuple(
         EnergyTask(
             task_id=str(item["task_id"]),
@@ -90,7 +91,6 @@ def main() -> None:
         uploaded = st.file_uploader(
             "JSON senaryosu yükle",
             type=["json"],
-            max_upload_size=2,
             help="Örnek şablon: examples/day_ahead.json",
         )
         st.download_button(
@@ -112,10 +112,9 @@ def main() -> None:
         st.stop()
 
     currency = str(scenario.get("currency", "para birimi"))
-    slot_hours = request.slot_hours
     st.subheader(str(scenario.get("site_name", "Örnek tesis")))
     st.caption(
-        f"{len(request.prices_per_kwh)} zaman dilimi · {slot_hours:g} saat/dilim · "
+        f"{len(request.prices_per_kwh)} zaman dilimi · {request.slot_hours:g} saat/dilim · "
         f"Azami güç {request.max_power_kw:g} kW · {len(request.tasks)} esnek yük"
     )
 
@@ -125,10 +124,7 @@ def main() -> None:
         f"{report.reference_cost:,.2f} {currency}",
         help="Optimizasyon tarafından yerleştirilen aynı görevlerin en erken başlangıç saatinde çalıştığı karşılaştırma senaryosu.",
     )
-    col2.metric(
-        "Optimize maliyet",
-        f"{report.optimized_cost:,.2f} {currency}",
-    )
+    col2.metric("Optimize maliyet", f"{report.optimized_cost:,.2f} {currency}")
     col3.metric(
         "Tahmini maliyet farkı",
         f"{report.estimated_savings:,.2f} {currency}",
@@ -148,7 +144,12 @@ def main() -> None:
         "Optimize (kW)": list(result.load_profile_kw),
         "Güç sınırı (kW)": [request.max_power_kw] * len(result.load_profile_kw),
     }
-    st.line_chart(chart_data, y_label="Güç (kW)", x_label="Zaman dilimi")
+    st.line_chart(
+        chart_data,
+        y_label="Güç (kW)",
+        x_label="Zaman dilimi",
+        alt="Referans, optimize edilmiş yük ve tesis güç sınırının karşılaştırması",
+    )
 
     st.subheader("Önerilen çalışma planı")
     if result.schedule:
