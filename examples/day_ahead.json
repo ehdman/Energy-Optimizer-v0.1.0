@@ -1,0 +1,33 @@
+{
+  "currency": "TRY",
+  "slot_hours": 1.0,
+  "max_power_kw": 10.0,
+  "prices_per_kwh": [2.4, 2.1, 1.9, 1.5, 1.2, 1.4, 2.0, 2.6],
+  "base_load_kw": [2.0, 2.0, 2.2, 2.4, 2.8, 3.0, 2.6, 2.2],
+  "tasks": [
+    {
+      "task_id": "water-heater",
+      "name": "Su ısıtıcısı",
+      "power_kw": 2.0,
+      "duration_slots": 2,
+      "earliest_start": 0,
+      "latest_start": 5
+    },
+    {
+      "task_id": "ev-charger",
+      "name": "Elektrikli araç şarjı",
+      "power_kw": 7.0,
+      "duration_slots": 2,
+      "earliest_start": 2,
+      "latest_start": 6
+    },
+    {
+      "task_id": "dishwasher",
+      "name": "Bulaşık makinesi",
+      "power_kw": 1.5,
+      "duration_slots": 1,
+      "earliest_start": 0,
+      "latest_start": 7
+    }
+  ]
+}
