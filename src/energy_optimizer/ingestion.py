@@ -56,7 +56,7 @@ def _parse_timestamp(value: Any) -> datetime:
         except ValueError as exc:
             raise ValueError(f"Invalid ISO-8601 timestamp: {value!r}") from exc
     else:
-        raise ValueError(f"Invalid timestamp value: {value!r}")
+        raise TypeError(f"Invalid timestamp value: {value!r}")
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError("Every timestamp must include an explicit UTC offset or timezone")
     return parsed
