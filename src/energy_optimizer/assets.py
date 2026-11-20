@@ -158,6 +158,8 @@ def simulate_asset_dispatch(request: AssetDispatchRequest) -> AssetDispatchResul
         if (
             request.grid_charge_price_cap is not None
             and price <= request.grid_charge_price_cap
+            and not price_discharge
+            and not must_discharge
             and charge_kw < battery.max_charge_kw
         ):
             remaining_power = battery.max_charge_kw - charge_kw
