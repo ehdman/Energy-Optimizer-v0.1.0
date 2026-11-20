@@ -18,7 +18,7 @@ All time series must have the same non-zero length. Battery state of charge is v
 2. Remaining PV surplus charges the battery within its power and state-of-charge limits.
 3. Remaining PV surplus is exported.
 4. The battery discharges to reduce import above a configured grid cap, or when an explicit price threshold is reached.
-5. Grid charging is disabled by default. When enabled, it is limited by the configured price ceiling, battery limits, and remaining grid-cap headroom.
+5. Grid charging is disabled by default. When enabled, it is limited by the configured price ceiling, battery limits, and remaining grid-cap headroom. A discharge condition takes precedence over grid charging, so the simulator never intentionally charges and discharges the battery in the same interval.
 
 The policy is deterministic and uses only the interval's supplied values. It does not forecast future load, prices, solar generation, or carbon intensity, and it does not claim global optimality.
 
@@ -26,7 +26,7 @@ The policy is deterministic and uses only the interval's supplied values. It doe
 
 The result includes interval-by-interval PV use/export, battery charge/discharge, state of charge, grid import, energy cost, optional emissions, and any grid-cap exceedance. A cap exceedance is reported rather than hidden when the battery lacks sufficient energy or power.
 
-Carbon emissions are calculated only when the caller supplies a time-aligned carbon-intensity series. Export credit defaults to zero. No carbon factor, tariff, or export compensation is inferred.
+Carbon emissions are calculated as operational emissions from grid imports only, and only when the caller supplies a time-aligned carbon-intensity series. This simple accounting does not attribute emissions to stored energy across intervals or apply lifecycle factors. Export credit defaults to zero. No carbon factor, tariff, or export compensation is inferred.
 
 ## Example
 
