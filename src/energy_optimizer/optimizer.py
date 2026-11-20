@@ -1,77 +1,31 @@
-"""A transparent greedy heuristic for flexible-load scheduling."""
+"""Scheduling algorithms and a common public optimizer interface."""
 
 from __future__ import annotations
 
 from .models import OptimizationRequest, OptimizationResult, ScheduledTask
 
 
-def optimize_schedule(request: OptimizationRequest) -> OptimizationResult:
-    """Schedule flexible tasks in low-cost slots without exceeding the power cap.
-
-    Tasks with fewer feasible start choices are scheduled first. For each task,
-    the algorithm selects the cheapest feasible consecutive window, breaking
-    ties by choosing the earliest start. This is a heuristic, not a global
-    optimizer; task ordering can affect the final result.
-    """
-
-    horizon = len(request.prices_per_kwh)
-    added_load = [0.0] * horizon
+def _build_result(
+    request: OptimizationRequest,
+    placements: dict[str, int],
+    unscheduled: tuple[str, ...],
+    *,
+    solver_name: str,
+    is_optimal: bool,
+    mip_gap: float | None = None,
+) -> OptimizationResult:
+    tasks_by_id = {task.task_id: task for task in request.tasks}
+    added_load = [0.0] * len(request.prices_per_kwh)
     scheduled: list[ScheduledTask] = []
-    unscheduled: list[str] = []
-
-    ordered_tasks = sorted(
-        request.tasks,
-        key=lambda task: (
-            task.latest_start - task.earliest_start + 1,
-            -(task.power_kw * task.duration_slots),
-            task.task_id,
-        ),
-    )
-
-    for task in ordered_tasks:
-        best_choice: tuple[float, int] | None = None
-
-        for start in range(task.earliest_start, task.latest_start + 1):
-            end = start + task.duration_slots
-            if end > horizon:
-                continue
-
-            feasible = all(
-                request.base_load_kw[slot] + added_load[slot] + task.power_kw
-                <= request.max_power_kw + 1e-9
-                for slot in range(start, end)
-            )
-            if not feasible:
-                continue
-
-            cost = (
-                task.power_kw
-                * request.slot_hours
-                * sum(request.prices_per_kwh[start:end])
-            )
-            candidate = (cost, start)
-            if best_choice is None or candidate < best_choice:
-                best_choice = candidate
-
-        if best_choice is None:
-            unscheduled.append(task.task_id)
-            continue
-
-        task_cost, start = best_choice
+    for task_id, start in placements.items():
+        task = tasks_by_id[task_id]
         end = start + task.duration_slots
         for slot in range(start, end):
             added_load[slot] += task.power_kw
-
         energy = task.power_kw * request.slot_hours * task.duration_slots
+        cost = task.power_kw * request.slot_hours * sum(request.prices_per_kwh[start:end])
         scheduled.append(
-            ScheduledTask(
-                task_id=task.task_id,
-                name=task.name,
-                start_slot=start,
-                end_slot_exclusive=end,
-                energy_kwh=energy,
-                cost=task_cost,
-            )
+            ScheduledTask(task.task_id, task.name, start, end, energy, cost)
         )
 
     load_profile = tuple(
@@ -83,19 +37,77 @@ def optimize_schedule(request: OptimizationRequest) -> OptimizationResult:
         for load, price in zip(request.base_load_kw, request.prices_per_kwh, strict=True)
     )
     task_cost = sum(item.cost for item in scheduled)
-    total_energy = sum(load_profile) * request.slot_hours
-
-    chronological_schedule = tuple(
-        sorted(scheduled, key=lambda item: (item.start_slot, item.task_id))
-    )
-
     return OptimizationResult(
-        schedule=chronological_schedule,
-        unscheduled_task_ids=tuple(unscheduled),
+        schedule=tuple(sorted(scheduled, key=lambda item: (item.start_slot, item.task_id))),
+        unscheduled_task_ids=tuple(sorted(unscheduled)),
         base_energy_cost=base_cost,
         scheduled_task_cost=task_cost,
         total_cost=base_cost + task_cost,
-        total_energy_kwh=total_energy,
+        total_energy_kwh=sum(load_profile) * request.slot_hours,
         peak_power_kw=max(load_profile),
         load_profile_kw=load_profile,
+        solver_name=solver_name,
+        is_optimal=is_optimal,
+        mip_gap=mip_gap,
     )
+
+
+def optimize_greedy(request: OptimizationRequest) -> OptimizationResult:
+    """Fast deterministic heuristic; it does not guarantee a global optimum."""
+    added_load = [0.0] * len(request.prices_per_kwh)
+    placements: dict[str, int] = {}
+    unscheduled: list[str] = []
+    ordered_tasks = sorted(
+        request.tasks,
+        key=lambda task: (
+            task.latest_start - task.earliest_start + 1,
+            -(task.power_kw * task.duration_slots),
+            task.task_id,
+        ),
+    )
+    for task in ordered_tasks:
+        best_choice: tuple[float, int] | None = None
+        for start in range(task.earliest_start, task.latest_start + 1):
+            end = start + task.duration_slots
+            feasible = all(
+                request.base_load_kw[slot] + added_load[slot] + task.power_kw
+                <= request.max_power_kw + 1e-9
+                for slot in range(start, end)
+            )
+            if not feasible:
+                continue
+            cost = task.power_kw * request.slot_hours * sum(request.prices_per_kwh[start:end])
+            candidate = (cost, start)
+            if best_choice is None or candidate < best_choice:
+                best_choice = candidate
+        if best_choice is None:
+            unscheduled.append(task.task_id)
+            continue
+        _, start = best_choice
+        placements[task.task_id] = start
+        for slot in range(start, start + task.duration_slots):
+            added_load[slot] += task.power_kw
+    return _build_result(
+        request, placements, tuple(unscheduled), solver_name="greedy", is_optimal=False
+    )
+
+
+def optimize_schedule(
+    request: OptimizationRequest,
+    *,
+    solver: str = "auto",
+    time_limit_seconds: float = 30.0,
+) -> OptimizationResult:
+    """Use MILP when available, or the greedy heuristic when requested."""
+    normalized = solver.strip().lower()
+    if normalized == "greedy":
+        return optimize_greedy(request)
+    if normalized in {"milp", "auto"}:
+        try:
+            from .milp import optimize_milp
+            return optimize_milp(request, time_limit_seconds=time_limit_seconds)
+        except ImportError:
+            if normalized == "milp":
+                raise
+            return optimize_greedy(request)
+    raise ValueError("solver must be one of: auto, greedy, milp")
