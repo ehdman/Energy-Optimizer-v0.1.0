@@ -13,7 +13,6 @@ from typing import Any
 
 MAX_METER_FILE_BYTES = 10 * 1024 * 1024
 MAX_METER_ROWS = 100_000
-REQUIRED_COLUMNS = {"timestamp", "price_per_kwh", "base_load_kw"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +27,7 @@ class MeterInterval:
 class MeterData:
     intervals: tuple[MeterInterval, ...]
     slot_hours: float
+    power_column: str = "base_load_kw"
 
     @property
     def prices_per_kwh(self) -> tuple[float, ...]:
@@ -78,9 +78,15 @@ def _validate_rows(rows: list[dict[str, Any]]) -> MeterData:
     if len(rows) > MAX_METER_ROWS:
         raise ValueError(f"Meter file exceeds the {MAX_METER_ROWS:,}-row limit")
     columns = {str(key).strip().lower() for key in rows[0] if key is not None}
-    missing = REQUIRED_COLUMNS - columns
+    missing = {"timestamp", "price_per_kwh"} - columns
     if missing:
         raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
+    power_columns = columns & {"base_load_kw", "import_power_kw"}
+    if len(power_columns) != 1:
+        raise ValueError(
+            "Provide exactly one power column: base_load_kw or import_power_kw"
+        )
+    power_column = next(iter(power_columns))
 
     intervals: list[MeterInterval] = []
     production_flags: list[bool] = []
@@ -92,9 +98,9 @@ def _validate_rows(rows: list[dict[str, Any]]) -> MeterData:
         }
         timestamp = _parse_timestamp(row.get("timestamp"))
         price = _as_float(row.get("price_per_kwh"), "price_per_kwh", row_number)
-        load = _as_float(row.get("base_load_kw"), "base_load_kw", row_number)
-        if load < 0:
-            raise ValueError(f"Row {row_number}: base_load_kw cannot be negative")
+        power = _as_float(row.get(power_column), power_column, row_number)
+        if power < 0:
+            raise ValueError(f"Row {row_number}: {power_column} cannot be negative")
         raw_production = row.get("production_units")
         has_production = raw_production not in (None, "")
         production = (
@@ -104,7 +110,7 @@ def _validate_rows(rows: list[dict[str, Any]]) -> MeterData:
         if production is not None and production < 0:
             raise ValueError(f"Row {row_number}: production_units cannot be negative")
         production_flags.append(has_production)
-        intervals.append(MeterInterval(timestamp, price, load, production))
+        intervals.append(MeterInterval(timestamp, price, power, production))
 
     if any(production_flags) and not all(production_flags):
         raise ValueError("production_units must be populated for every row or for none")
@@ -119,11 +125,11 @@ def _validate_rows(rows: list[dict[str, Any]]) -> MeterData:
         raise ValueError("Timestamps must be strictly increasing without duplicates")
     if any(abs(delta - deltas[0]) > 1.0 for delta in deltas):
         raise ValueError("Timestamps must be evenly spaced; missing or irregular rows found")
-    return MeterData(tuple(intervals), deltas[0] / 3600.0)
+    return MeterData(tuple(intervals), deltas[0] / 3600.0, power_column)
 
 
 def read_meter_data(filename: str, content: bytes) -> MeterData:
-    """Read CSV/XLSX columns: timestamp, price_per_kwh, base_load_kw, optional production_units."""
+    """Read CSV/XLSX columns: timestamp, price_per_kwh, one power column, optional production."""
     if len(content) > MAX_METER_FILE_BYTES:
         raise ValueError("Meter file exceeds the 10 MB size limit")
     suffix = Path(filename).suffix.lower()
@@ -136,7 +142,6 @@ def read_meter_data(filename: str, content: bytes) -> MeterData:
         if reader.fieldnames is None:
             raise ValueError("CSV header row is missing")
         return _validate_rows(list(reader))
-
     if suffix in {".xlsx", ".xlsm"}:
         try:
             from openpyxl import load_workbook
@@ -163,5 +168,4 @@ def read_meter_data(filename: str, content: bytes) -> MeterData:
         except Exception as exc:
             raise ValueError("Could not read the Excel workbook") from exc
         return _validate_rows(rows)
-
     raise ValueError("Supported meter file formats are CSV and XLSX")
