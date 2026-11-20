@@ -61,6 +61,11 @@ def build_request(data: dict[str, Any]) -> OptimizationRequest:
             duration_slots=int(item["duration_slots"]),
             earliest_start=int(item["earliest_start"]),
             latest_start=int(item["latest_start"]),
+            machine_id=str(item["machine_id"]) if item.get("machine_id") is not None else None,
+            predecessors=tuple(str(value) for value in item.get("predecessors", ())),
+            due_slot=int(item["due_slot"]) if item.get("due_slot") is not None else None,
+            priority_weight=int(item.get("priority_weight", 1)),
+            delay_penalty_per_slot=float(item.get("delay_penalty_per_slot", 0.0)),
         )
         for item in data["tasks"]
     )
@@ -74,9 +79,9 @@ def build_request(data: dict[str, Any]) -> OptimizationRequest:
 
 
 def run_optimizer_tab() -> None:
-    st.subheader("Senaryo optimizasyonu")
+    st.subheader("Üretim ve enerji planlaması")
     st.caption(
-        "JSON dosyası görevleri ve tesis güç sınırını tanımlar. Sayaç CSV/XLSX dosyası "
+        "JSON dosyası operasyonları, makine kısıtlarını ve tesis güç sınırını tanımlar. Sayaç CSV/XLSX dosyası "
         "yüklenirse fiyat ve baz yük serisi sayaç dosyasından alınır."
     )
     col_a, col_b = st.columns(2)
@@ -181,9 +186,9 @@ def run_optimizer_tab() -> None:
         st.dataframe(
             [
                 {
-                    "Task": item.name,
+                    "Operation": item.name,\n                    "Machine": item.machine_id or "—",\n                    "Priority": item.priority_weight,
                     "Start interval": item.start_slot,
-                    "End interval (exclusive)": item.end_slot_exclusive,
+                    "End interval (exclusive)": item.end_slot_exclusive,\n                    "Late intervals": item.late_slots,
                     "Energy (kWh)": round(item.energy_kwh, 3),
                     f"Cost ({currency})": round(item.cost, 2),
                 }
@@ -209,10 +214,10 @@ def run_optimizer_tab() -> None:
         "estimated_savings_percent": report.estimated_savings_percent,
         "peak_power_kw": result.peak_power_kw,
         "load_profile_kw": list(result.load_profile_kw),
-        "total_energy_kwh": result.total_energy_kwh,
+        "total_energy_kwh": result.total_energy_kwh,\n        "total_delay_penalty": result.total_delay_penalty,\n        "late_task_count": result.late_task_count,
         "schedule": [
             {
-                "task_id": item.task_id,
+                "task_id": item.task_id,\n                "machine_id": item.machine_id,\n                "priority_weight": item.priority_weight,\n                "late_slots": item.late_slots,
                 "start_slot": item.start_slot,
                 "end_slot_exclusive": item.end_slot_exclusive,
                 "energy_kwh": item.energy_kwh,
