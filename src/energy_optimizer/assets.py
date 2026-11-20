@@ -61,9 +61,11 @@ class AssetDispatchRequest:
                     raise ValueError(f"{field} values must be finite; load and PV must be non-negative")
         if not isfinite(self.slot_hours) or self.slot_hours <= 0:
             raise ValueError("slot_hours must be finite and greater than zero")
-        if self.max_grid_import_kw is not None:
-            if not isfinite(self.max_grid_import_kw) or self.max_grid_import_kw <= 0:
-                raise ValueError("max_grid_import_kw must be finite and greater than zero")
+        if (
+            self.max_grid_import_kw is not None
+            and (not isfinite(self.max_grid_import_kw) or self.max_grid_import_kw <= 0)
+        ):
+            raise ValueError("max_grid_import_kw must be finite and greater than zero")
         if self.carbon_intensity_kg_per_kwh is not None:
             if len(self.carbon_intensity_kg_per_kwh) != size:
                 raise ValueError("carbon intensity series must match the planning horizon")
