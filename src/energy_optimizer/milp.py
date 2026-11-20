@@ -1,4 +1,4 @@
-"""Mixed-integer linear programming scheduler powered by SciPy/HiGHS."""
+"""Production-aware mixed-integer scheduling with SciPy/HiGHS."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def optimize_milp(
     *,
     time_limit_seconds: float = 30.0,
 ) -> OptimizationResult:
-    """Minimize unscheduled-task count first, then energy cost."""
+    """Maximize scheduled priority weight, then minimize energy and delay cost."""
     if not isfinite(time_limit_seconds) or time_limit_seconds <= 0:
         raise ValueError("time_limit_seconds must be finite and greater than zero")
     try:
@@ -30,42 +30,70 @@ def optimize_milp(
             request, {}, (), solver_name="scipy.milp", is_optimal=True, mip_gap=0.0
         )
 
+    tasks_by_id = {task.task_id: task for task in request.tasks}
     choices: list[tuple[str, int, float]] = []
     task_choice_indices: dict[str, list[int]] = {task.task_id: [] for task in request.tasks}
     for task in request.tasks:
         for start in range(task.earliest_start, task.latest_start + 1):
             end = start + task.duration_slots
-            if end > len(request.prices_per_kwh):
-                continue
-            cost = task.power_kw * request.slot_hours * sum(request.prices_per_kwh[start:end])
+            energy_cost = (
+                task.power_kw
+                * request.slot_hours
+                * sum(request.prices_per_kwh[start:end])
+            )
+            late = max(0, end - task.due_slot) if task.due_slot is not None else 0
+            delay_cost = late * task.delay_penalty_per_slot
             task_choice_indices[task.task_id].append(len(choices))
-            choices.append((task.task_id, start, cost))
+            choices.append((task.task_id, start, energy_cost + delay_cost))
 
     choice_count = len(choices)
     task_count = len(request.tasks)
-    variable_count = choice_count + task_count
+    horizon = len(request.prices_per_kwh)
     penalty = 1.0 + 2.0 * sum(abs(choice[2]) for choice in choices)
-    objective = np.zeros(variable_count, dtype=float)
+    objective = np.zeros(choice_count + task_count, dtype=float)
     for index, (_, _, cost) in enumerate(choices):
         objective[index] = cost
-    objective[choice_count:] = penalty
+    task_index = {task.task_id: index for index, task in enumerate(request.tasks)}
+    for task in request.tasks:
+        objective[choice_count + task_index[task.task_id]] = penalty * task.priority_weight
 
-    row_count = task_count + len(request.prices_per_kwh)
-    matrix = lil_matrix((row_count, variable_count), dtype=float)
+    machine_ids = sorted(
+        {task.machine_id for task in request.tasks if task.machine_id is not None}
+    )
+    machine_row = {
+        (machine_id, slot): task_count + horizon + machine_index * horizon + slot
+        for machine_index, machine_id in enumerate(machine_ids)
+        for slot in range(horizon)
+    }
+
+    precedence_specs: list[tuple[int, list[int]]] = []
+    for task in request.tasks:
+        for successor_choice in task_choice_indices[task.task_id]:
+            successor_start = choices[successor_choice][1]
+            for predecessor_id in task.predecessors:
+                predecessor_duration = tasks_by_id[predecessor_id].duration_slots
+                compatible = [
+                    index
+                    for index in task_choice_indices[predecessor_id]
+                    if choices[index][1] + predecessor_duration <= successor_start
+                ]
+                precedence_specs.append((successor_choice, compatible))
+
+    first_precedence_row = task_count + horizon + len(machine_ids) * horizon
+    row_count = first_precedence_row + len(precedence_specs)
+    matrix = lil_matrix((row_count, choice_count + task_count), dtype=float)
     lower = np.full(row_count, -np.inf, dtype=float)
     upper = np.full(row_count, np.inf, dtype=float)
-    task_indices = {task.task_id: index for index, task in enumerate(request.tasks)}
-    tasks_by_id = {task.task_id: task for task in request.tasks}
 
-    # Each task gets exactly one start choice or one unscheduled indicator.
+    # Each task is assigned one start choice or marked unscheduled.
     for task_id, indices in task_choice_indices.items():
-        row = task_indices[task_id]
+        row = task_index[task_id]
         for variable_index in indices:
             matrix[row, variable_index] = 1.0
         matrix[row, choice_count + row] = 1.0
         lower[row] = upper[row] = 1.0
 
-    # The sum of selected task power cannot exceed remaining site capacity.
+    # Site import-power cap.
     for slot, base_load in enumerate(request.base_load_kw):
         row = task_count + slot
         for variable_index, (task_id, start, _) in enumerate(choices):
@@ -74,10 +102,32 @@ def optimize_milp(
                 matrix[row, variable_index] = task.power_kw
         upper[row] = request.max_power_kw - base_load
 
+    # Single-capacity machines: no two assigned operations can overlap.
+    for variable_index, (task_id, start, _) in enumerate(choices):
+        task = tasks_by_id[task_id]
+        if task.machine_id is None:
+            continue
+        for slot in range(start, start + task.duration_slots):
+            matrix[machine_row[(task.machine_id, slot)], variable_index] = 1.0
+    for row in machine_row.values():
+        upper[row] = 1.0
+
+    # Selecting an operation requires each direct predecessor to be selected
+    # at a start that allows it to finish before the successor starts.
+    for offset, (successor_choice, predecessor_choices) in enumerate(precedence_specs):
+        row = first_precedence_row + offset
+        matrix[row, successor_choice] = 1.0
+        for predecessor_choice in predecessor_choices:
+            matrix[row, predecessor_choice] = -1.0
+        upper[row] = 0.0
+
     solved = milp(
         c=objective,
-        integrality=np.ones(variable_count, dtype=int),
-        bounds=Bounds(np.zeros(variable_count), np.ones(variable_count)),
+        integrality=np.ones(choice_count + task_count, dtype=int),
+        bounds=Bounds(
+            np.zeros(choice_count + task_count),
+            np.ones(choice_count + task_count),
+        ),
         constraints=LinearConstraint(matrix.tocsr(), lower, upper),
         options={"time_limit": float(time_limit_seconds), "mip_rel_gap": 1e-8},
     )
