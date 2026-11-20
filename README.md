@@ -1,8 +1,8 @@
 # Energy Optimizer
 
-**Energy Optimizer Pro** is an early-stage industrial energy analytics and production-aware scheduling product. Version 0.4.0 adds machine capacity, operation precedence, weighted priorities, and soft due-date penalties.
+**Energy Optimizer Pro** is an early-stage industrial energy analytics and production-aware scheduling product. Version 0.4.0 adds machine capacity, operation precedence, weighted priorities, and soft due-date penalties. The non-AI infrastructure branch adds a deterministic PV/battery dispatch simulator.
 
-> **Status: pilot MVP (v0.4.0).** This is decision-support software, not a certified energy audit or guaranteed savings product. It does not control physical equipment.
+> **Status: pilot MVP.** This is decision-support software, not a certified energy audit or guaranteed savings product. It does not control physical equipment.
 
 ## Capabilities
 
@@ -12,6 +12,7 @@
 - Schedule production operations with machine exclusivity and predecessor relationships
 - Prioritize critical operations and penalize soft due-date lateness
 - Use SciPy/HiGHS MILP or a deterministic greedy heuristic
+- Simulate PV self-consumption, battery charge/discharge, grid import caps, energy cost, and optional carbon reporting without forecasting
 - Explore scenarios in a local Streamlit dashboard and export a JSON report
 
 ## Install and run
@@ -26,6 +27,12 @@ streamlit run app.py
 ```
 
 On macOS/Linux, use source .venv/bin/activate after creating the virtual environment.
+
+## Energy asset simulation
+
+The `energy_optimizer.assets` module exposes `BatterySpec`, `AssetDispatchRequest`, and `simulate_asset_dispatch`. PV serves load first, surplus PV charges the battery, and the battery can shave an import cap or discharge above an explicitly supplied price threshold. Grid charging is opt-in. The result reports state of charge, grid import, exports, cost, optional emissions, and any unavoidable cap exceedance.
+
+This is deterministic simulation, not AI forecasting or global optimization. It does not communicate with inverters, BMS, PLC, or SCADA. See [energy asset dispatch](docs/energy-assets.md).
 
 ## Production scenario fields
 
@@ -87,9 +94,7 @@ A modeled scenario estimate is not an audited bill saving. Metered before/after 
 
 ## Engineering and security boundaries
 
-This release models non-preemptive tasks with constant average power. It does not yet include forecasting, batteries, PV, alternative machine routing, setup times, labor, buffer dynamics, or process quality constraints.
-
-The dashboard remains a local pilot with no authentication, tenant isolation, database, billing, hosted security, or physical device control. Keep integrations read-only until a separate site safety case is approved.
+The dashboard remains a local pilot with no authentication, tenant isolation, database, billing, hosted security, or physical device control. Keep integrations read-only until a separate site safety case is approved. Asset simulation outputs are recommendations/estimates only.
 
 ## Run checks
 
@@ -99,7 +104,7 @@ ruff check .
 pytest
 ```
 
-See [the production scheduling contract](docs/production-scheduling.md), [architecture](docs/architecture.md), and [product roadmap](docs/roadmap.md) for model design, validation gates, and next milestones.
+See [production scheduling](docs/production-scheduling.md), [architecture](docs/architecture.md), [asset dispatch](docs/energy-assets.md), and [product roadmap](docs/roadmap.md).
 
 ## License
 
