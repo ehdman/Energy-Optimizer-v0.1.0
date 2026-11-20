@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "energy-optimizer"
-version = "0.1.0"
-description = "A starter toolkit for cost-aware energy load scheduling."
+version = "0.2.0"
+description = "A cost-aware energy scheduling and decision-support pilot for industrial sites."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -13,6 +13,7 @@ authors = [{ name = "Energy Optimizer contributors" }]
 dependencies = []
 
 [project.optional-dependencies]
+app = ["streamlit>=1.40"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [tool.setuptools.packages.find]
