@@ -1,0 +1,81 @@
+{
+  "site_name": "Sample precision manufacturing line",
+  "currency": "TRY",
+  "slot_hours": 1.0,
+  "max_power_kw": 55.0,
+  "prices_per_kwh": [2.4, 2.2, 2.0, 1.9, 1.8, 1.7, 1.8, 2.0, 2.3, 2.6, 2.8, 2.7, 2.5, 2.3, 2.1, 1.9],
+  "base_load_kw": [14, 14, 15, 15, 16, 16, 17, 18, 19, 18, 17, 17, 16, 15, 15, 14],
+  "tasks": [
+    {
+      "task_id": "order-a-cut",
+      "name": "Order A - raw material cutting",
+      "power_kw": 12,
+      "duration_slots": 2,
+      "earliest_start": 0,
+      "latest_start": 5,
+      "machine_id": "CUTTER-01",
+      "priority_weight": 10,
+      "due_slot": 7,
+      "delay_penalty_per_slot": 4
+    },
+    {
+      "task_id": "order-a-cnc",
+      "name": "Order A - CNC machining",
+      "power_kw": 22,
+      "duration_slots": 3,
+      "earliest_start": 0,
+      "latest_start": 8,
+      "machine_id": "CNC-01",
+      "predecessors": ["order-a-cut"],
+      "priority_weight": 10,
+      "due_slot": 11,
+      "delay_penalty_per_slot": 5
+    },
+    {
+      "task_id": "order-a-pack",
+      "name": "Order A - packing",
+      "power_kw": 6,
+      "duration_slots": 2,
+      "earliest_start": 0,
+      "latest_start": 12,
+      "machine_id": "PACK-01",
+      "predecessors": ["order-a-cnc"],
+      "priority_weight": 8,
+      "due_slot": 15,
+      "delay_penalty_per_slot": 2
+    },
+    {
+      "task_id": "order-b-cut",
+      "name": "Order B - raw material cutting",
+      "power_kw": 10,
+      "duration_slots": 2,
+      "earliest_start": 0,
+      "latest_start": 9,
+      "machine_id": "CUTTER-01",
+      "priority_weight": 7,
+      "due_slot": 12,
+      "delay_penalty_per_slot": 3
+    },
+    {
+      "task_id": "order-b-cnc",
+      "name": "Order B - CNC machining",
+      "power_kw": 18,
+      "duration_slots": 2,
+      "earliest_start": 0,
+      "latest_start": 12,
+      "machine_id": "CNC-01",
+      "predecessors": ["order-b-cut"],
+      "priority_weight": 7,
+      "due_slot": 15,
+      "delay_penalty_per_slot": 3
+    },
+    {
+      "task_id": "compressed-air",
+      "name": "Compressed air storage refill",
+      "power_kw": 8,
+      "duration_slots": 2,
+      "earliest_start": 3,
+      "latest_start": 13
+    }
+  ]
+}
