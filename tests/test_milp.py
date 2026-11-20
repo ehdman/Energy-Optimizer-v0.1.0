@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-pytest.importorskip("scipy")
-
 from energy_optimizer import EnergyTask, OptimizationRequest, optimize_schedule
 
 
