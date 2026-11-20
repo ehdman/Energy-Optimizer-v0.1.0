@@ -13,7 +13,7 @@ authors = [{ name = "Energy Optimizer contributors" }]
 dependencies = []
 
 [project.optional-dependencies]
-app = ["streamlit>=1.40"]
+app = ["streamlit>=1.50"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [tool.setuptools.packages.find]
