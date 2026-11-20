@@ -75,7 +75,7 @@ pytest
 - [Commercial MVP and pilot plan](docs/commercial-mvp.md)
 - [Pilot security and customer data](docs/pilot-security.md)
 - [Architecture](docs/architecture.md)
-- [Data contract](docs/data-contract.md)\n- [MILP optimization model](docs/optimization-model.md)
+- [Data contract](docs/data-contract.md)\n- [MILP optimization model](docs/optimization-model.md)\n- [Measurement and verification notes](docs/measurement-and-verification.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
