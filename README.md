@@ -99,7 +99,7 @@ ruff check .
 pytest
 ```
 
-See docs/production-scheduling.md and docs/architecture.md for the current model design and limitations.
+See [the production scheduling contract](docs/production-scheduling.md), [architecture](docs/architecture.md), and [product roadmap](docs/roadmap.md) for model design, validation gates, and next milestones.
 
 ## License
 
