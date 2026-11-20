@@ -25,9 +25,10 @@ class SavingsReport:
 def _ordered_scheduled_tasks(
     tasks_by_id: dict[str, EnergyTask],
     scheduled_ids: set[str],
+    machine_predecessors: dict[str, set[str]],
 ) -> list[EnergyTask]:
     remaining = {
-        task_id: set(tasks_by_id[task_id].predecessors)
+        task_id: set(tasks_by_id[task_id].predecessors) | machine_predecessors.get(task_id, set())
         for task_id in scheduled_ids
     }
     if any(not predecessors <= scheduled_ids for predecessors in remaining.values()):
@@ -73,14 +74,27 @@ def build_savings_report(
     if not scheduled_ids <= tasks_by_id.keys():
         raise ValueError("optimization result contains an unknown task ID")
 
+    # Preserve the machine order selected by the optimizer. This guarantees a
+    # feasible reference sequence while allowing each operation to move earlier.
+    machine_sequences: dict[str, list[tuple[int, str]]] = {}
+    for item in result.schedule:
+        if item.machine_id is not None:
+            machine_sequences.setdefault(item.machine_id, []).append((item.start_slot, item.task_id))
+    machine_predecessors: dict[str, set[str]] = {}
+    for sequence in machine_sequences.values():
+        sequence.sort()
+        for previous, current in zip(sequence, sequence[1:]):
+            machine_predecessors.setdefault(current[1], set()).add(previous[1])
+
     reference_load = list(request.base_load_kw)
     reference_task_cost = 0.0
     reference_placements: dict[str, int] = {}
 
-    for task in _ordered_scheduled_tasks(tasks_by_id, scheduled_ids):
+    for task in _ordered_scheduled_tasks(tasks_by_id, scheduled_ids, machine_predecessors):
+        all_predecessors = set(task.predecessors) | machine_predecessors.get(task.task_id, set())
         predecessor_finish = [
             reference_placements[pred] + tasks_by_id[pred].duration_slots
-            for pred in task.predecessors
+            for pred in all_predecessors
         ]
         earliest = max([task.earliest_start] + predecessor_finish)
         reference_start: int | None = None
