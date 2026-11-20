@@ -8,12 +8,7 @@ from math import isfinite
 
 @dataclass(frozen=True, slots=True)
 class EnergyTask:
-    """A non-preemptive, flexible electrical load.
-
-    latest_start is inclusive. The task runs for duration_slots consecutive
-    slots and consumes power_kw in every slot while active.
-    """
-
+    """A non-preemptive, flexible electrical load."""
     task_id: str
     name: str
     power_kw: float
@@ -27,7 +22,7 @@ class EnergyTask:
         if not self.name.strip():
             raise ValueError("name cannot be empty")
         if not isfinite(self.power_kw) or self.power_kw <= 0:
-            raise ValueError("power_kw must be a finite number greater than zero")
+            raise ValueError("power_kw must be finite and greater than zero")
         if self.duration_slots <= 0:
             raise ValueError("duration_slots must be greater than zero")
         if self.earliest_start < 0:
@@ -38,8 +33,6 @@ class EnergyTask:
 
 @dataclass(frozen=True, slots=True)
 class OptimizationRequest:
-    """Inputs for one finite-horizon energy scheduling problem."""
-
     prices_per_kwh: tuple[float, ...]
     base_load_kw: tuple[float, ...]
     tasks: tuple[EnergyTask, ...]
@@ -50,18 +43,17 @@ class OptimizationRequest:
         if not self.prices_per_kwh:
             raise ValueError("at least one price slot is required")
         if len(self.prices_per_kwh) != len(self.base_load_kw):
-            raise ValueError("prices_per_kwh and base_load_kw must have equal lengths")
+            raise ValueError("price and base-load series must have equal lengths")
         if any(not isfinite(price) for price in self.prices_per_kwh):
-            raise ValueError("all prices must be finite numbers")
+            raise ValueError("all prices must be finite")
         if any(not isfinite(load) or load < 0 for load in self.base_load_kw):
-            raise ValueError("base loads must be finite, non-negative numbers")
+            raise ValueError("base loads must be finite and non-negative")
         if not isfinite(self.slot_hours) or self.slot_hours <= 0:
-            raise ValueError("slot_hours must be a finite number greater than zero")
+            raise ValueError("slot_hours must be finite and greater than zero")
         if not isfinite(self.max_power_kw) or self.max_power_kw <= 0:
-            raise ValueError("max_power_kw must be a finite number greater than zero")
+            raise ValueError("max_power_kw must be finite and greater than zero")
         if any(load > self.max_power_kw for load in self.base_load_kw):
-            raise ValueError("base load exceeds max_power_kw in at least one slot")
-
+            raise ValueError("base load exceeds max_power_kw")
         horizon = len(self.prices_per_kwh)
         ids = [task.task_id for task in self.tasks]
         if len(ids) != len(set(ids)):
@@ -73,8 +65,6 @@ class OptimizationRequest:
 
 @dataclass(frozen=True, slots=True)
 class ScheduledTask:
-    """Placement and energy cost for a scheduled task."""
-
     task_id: str
     name: str
     start_slot: int
@@ -85,8 +75,6 @@ class ScheduledTask:
 
 @dataclass(frozen=True, slots=True)
 class OptimizationResult:
-    """Summary of the generated schedule."""
-
     schedule: tuple[ScheduledTask, ...]
     unscheduled_task_ids: tuple[str, ...]
     base_energy_cost: float
@@ -95,3 +83,6 @@ class OptimizationResult:
     total_energy_kwh: float
     peak_power_kw: float
     load_profile_kw: tuple[float, ...]
+    solver_name: str = "greedy"
+    is_optimal: bool = False
+    mip_gap: float | None = None
