@@ -20,7 +20,7 @@ Energy Optimizer Pro; endüstriyel tesislerin enerji verilerini analiz eden, ür
 - Tam elektrik faturası ve tüm vergi/dağıtım/talep/reactive kalemleri
 - Alternatif makine rotaları, setup/changeover, parti verimi, operatör, buffer/stok, vardiya, bakım ve kalite
 - Otomatik piyasa fiyatı veya talep tahmini
-- Batarya, PV, talep tarafı katılımı veya mikroşebeke optimizasyonu
+- Üretim çizelgelemesi, PV, batarya ve şebekeyi tek bir küresel MILP modelinde birlikte optimize etme (PV/batarya için ayrı deterministik dispatch simülasyonu mevcuttur)
 - Kullanıcı hesabı, çok kiracılı SaaS ve ödeme/abonelik
 - Gerçek sayaç, BMS, PLC, SCADA veya makinelere yazma/kontrol bağlantısı
 
