@@ -6,6 +6,7 @@ import csv
 from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO, StringIO
+from itertools import islice
 from math import isfinite
 from pathlib import Path
 from typing import Any
@@ -141,7 +142,7 @@ def read_meter_data(filename: str, content: bytes) -> MeterData:
         reader = csv.DictReader(StringIO(decoded))
         if reader.fieldnames is None:
             raise ValueError("CSV header row is missing")
-        return _validate_rows(list(reader))
+        return _validate_rows(list(islice(reader, MAX_METER_ROWS + 1)))
     if suffix in {".xlsx", ".xlsm"}:
         try:
             from openpyxl import load_workbook
@@ -149,6 +150,7 @@ def read_meter_data(filename: str, content: bytes) -> MeterData:
             raise ImportError(
                 "Excel import requires openpyxl. Install the app extra first."
             ) from exc
+        workbook = None
         try:
             workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
             sheet = workbook.active
@@ -157,15 +159,21 @@ def read_meter_data(filename: str, content: bytes) -> MeterData:
             if not headers:
                 raise ValueError("Excel header row is missing")
             names = [str(value).strip().lower() if value is not None else "" for value in headers]
-            rows = [
-                dict(zip(names, row))
-                for row in values
-                if any(value is not None for value in row)
-            ]
-            workbook.close()
+            rows = []
+            for row in values:
+                if not any(value is not None for value in row):
+                    continue
+                rows.append(dict(zip(names, row)))
+                if len(rows) > MAX_METER_ROWS:
+                    raise ValueError(
+                        f"Meter file exceeds the {MAX_METER_ROWS:,}-row limit"
+                    )
         except (ValueError, OSError):
             raise
         except Exception as exc:
             raise ValueError("Could not read the Excel workbook") from exc
+        finally:
+            if workbook is not None:
+                workbook.close()
         return _validate_rows(rows)
     raise ValueError("Supported meter file formats are CSV and XLSX")

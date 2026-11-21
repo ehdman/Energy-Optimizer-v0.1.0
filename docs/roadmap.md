@@ -4,7 +4,7 @@ The roadmap is organized around measurable pilot readiness, not feature count. E
 
 ## v0.4.0 — Production-aware scheduling foundation
 
-**Status: implemented on the feature branch; CI validation in progress.**
+**Status: implemented on `main`; automated CI checks pass.**
 
 - Machine exclusivity constraints.
 - Predecessor/successor relationships and dependency-cycle validation.
@@ -27,16 +27,7 @@ The roadmap is organized around measurable pilot readiness, not feature count. E
 
 **Exit gate:** a site engineer signs off the resource/process model; a historical replay reproduces known schedules; infeasibility reports identify the limiting constraints. Do not infer process sequences from meter signals.
 
-## v0.6.0 — Forecasting and rolling-horizon control recommendations
-
-- Load and tariff forecasts, with uncertainty intervals.
-- Weather and renewable-generation forecasts only for sites where they materially affect demand.
-- Rolling-horizon / model-predictive re-optimization as new measurements and orders arrive.
-- Forecast quality, drift, fallback behavior, and explanation of schedule changes.
-
-**Exit gate:** backtests against time-ordered historical data beat simple baselines on agreed metrics; no future-data leakage; forecast uncertainty is visible in recommendations.
-
-## v0.7.0 — Site energy assets and multi-objective planning
+## v0.6.0 — Site energy asset simulation and scenario analysis
 
 - PV generation, battery state of charge, efficiency, reserve, and degradation.
 - Demand/contract power and full tariff components when supplied by the customer and verified against invoices.
@@ -46,7 +37,7 @@ The roadmap is organized around measurable pilot readiness, not feature count. E
 
 **Exit gate:** conservation and equipment constraints pass property tests; model outputs reconcile to site data; investment claims are sensitivity-tested rather than guaranteed.
 
-## v0.8.0 — Secure data platform and read-only integrations
+## v0.7.0 — Secure data platform and read-only integrations
 
 - Authenticated API, role-based authorization, tenant isolation, and customer-specific retention/deletion.
 - Database migrations, backups, audit logs, observability, and reproducible report versions.
@@ -67,7 +58,7 @@ The roadmap is organized around measurable pilot readiness, not feature count. E
 ## Engineering principles
 
 1. Safety, process quality, and committed production constraints are hard constraints; they are not traded away for a lower energy bill.
-2. Distinguish measured data, forecasts, model estimates, and verified savings in every report.
+2. Distinguish measured data, deterministic model estimates, and verified savings in every report.
 3. Prefer interpretable constraints and traceable data contracts over opaque scoring.
 4. Re-optimize in a bounded rolling horizon; never allow unbounded model growth.
 5. Start OT integrations read-only. Any future write path requires separate authorization, safety engineering, operator approval, fail-safe behavior, and rollback.
