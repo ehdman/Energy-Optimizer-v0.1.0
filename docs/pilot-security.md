@@ -2,7 +2,7 @@
 
 ## Current application behavior
 
-The v0.2.0 pilot dashboard runs locally with Streamlit. It reads a JSON scenario and computes a schedule in process memory. It has no database, customer login, tenant isolation, billing, or industrial control connection.
+The v0.4.0 pilot dashboard runs locally with Streamlit. It reads a JSON production scenario and CSV/XLSX meter files, then computes analyses and schedules in process memory. It has no database, customer login, tenant isolation, billing, or industrial control connection.
 
 The fact that the current app does not intentionally save an uploaded scenario is not a complete privacy or security guarantee for a hosted environment. Hosting, proxies, logs, backups, and operator access must be reviewed before customer data is processed.
 
@@ -14,7 +14,7 @@ The fact that the current app does not intentionally save an uploaded scenario i
 - Encrypt sensitive data at rest and in backups.
 - Define retention, deletion, export, and incident response procedures contractually.
 - Minimize collected data; avoid employee-level or personally identifying data unless strictly necessary.
-- Validate uploaded file size, schema, numeric ranges, timestamps, and units.
+- Validate uploaded file size, schema, numeric ranges, timestamps, and units. Current pilot limits scenario JSON to 2 MB, meter files to 10 MB, meter rows to 100,000, and planning intervals to 10,000.
 - Add audit logs for access, configuration changes, exports, and approved operational actions.
 - Perform dependency, application, and access-control reviews before production launch.
 
