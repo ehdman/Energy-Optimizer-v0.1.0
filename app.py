@@ -47,36 +47,76 @@ def load_scenario(raw: bytes) -> dict[str, Any]:
         raise ValueError(f"Missing scenario fields: {', '.join(sorted(missing))}")
     if not isinstance(data["prices_per_kwh"], list) or not isinstance(data["base_load_kw"], list):
         raise TypeError("prices_per_kwh and base_load_kw must be arrays.")
-    if len(data["prices_per_kwh"]) > MAX_SLOTS:
+    if max(len(data["prices_per_kwh"]), len(data["base_load_kw"])) > MAX_SLOTS:
         raise ValueError(f"At most {MAX_SLOTS} intervals are supported.")
     if not isinstance(data["tasks"], list) or len(data["tasks"]) > MAX_TASKS:
         raise ValueError(f"tasks must be an array with at most {MAX_TASKS} items.")
     return data
 
 
-def build_request(data: dict[str, Any]) -> OptimizationRequest:
-    tasks = tuple(
-        EnergyTask(
-            task_id=str(item["task_id"]),
-            name=str(item["name"]),
-            power_kw=float(item["power_kw"]),
-            duration_slots=int(item["duration_slots"]),
-            earliest_start=int(item["earliest_start"]),
-            latest_start=int(item["latest_start"]),
-            machine_id=str(item["machine_id"]) if item.get("machine_id") is not None else None,
-            predecessors=tuple(str(value) for value in item.get("predecessors", ())),
-            due_slot=int(item["due_slot"]) if item.get("due_slot") is not None else None,
-            priority_weight=int(item.get("priority_weight", 1)),
-            delay_penalty_per_slot=float(item.get("delay_penalty_per_slot", 0.0)),
-        )
-        for item in data["tasks"]
+def _integer_field(value: Any, field: str) -> int:
+    """Reject booleans and fractional JSON numbers instead of silently truncating."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{field} must be an integer.")
+    return value
+
+
+def _number_field(value: Any, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{field} must be a number.")
+    return float(value)
+
+
+def _build_task(item: Any) -> EnergyTask:
+    if not isinstance(item, dict):
+        raise TypeError("Each task must be a JSON object.")
+    required = {
+        "task_id", "name", "power_kw", "duration_slots", "earliest_start", "latest_start"
+    }
+    missing = required - item.keys()
+    if missing:
+        raise ValueError(f"Task is missing fields: {', '.join(sorted(missing))}")
+    for field in ("task_id", "name"):
+        if not isinstance(item[field], str):
+            raise TypeError(f"{field} must be a string.")
+    machine_id = item.get("machine_id")
+    if machine_id is not None and not isinstance(machine_id, str):
+        raise TypeError("machine_id must be a string when provided.")
+    predecessors = item.get("predecessors", [])
+    if not isinstance(predecessors, list) or any(
+        not isinstance(value, str) for value in predecessors
+    ):
+        raise TypeError("predecessors must be an array of task ID strings.")
+    due_slot = item.get("due_slot")
+    return EnergyTask(
+        task_id=item["task_id"],
+        name=item["name"],
+        power_kw=_number_field(item["power_kw"], "power_kw"),
+        duration_slots=_integer_field(item["duration_slots"], "duration_slots"),
+        earliest_start=_integer_field(item["earliest_start"], "earliest_start"),
+        latest_start=_integer_field(item["latest_start"], "latest_start"),
+        machine_id=machine_id,
+        predecessors=tuple(predecessors),
+        due_slot=_integer_field(due_slot, "due_slot") if due_slot is not None else None,
+        priority_weight=_integer_field(item.get("priority_weight", 1), "priority_weight"),
+        delay_penalty_per_slot=_number_field(
+            item.get("delay_penalty_per_slot", 0.0), "delay_penalty_per_slot"
+        ),
     )
+
+
+def build_request(data: dict[str, Any]) -> OptimizationRequest:
+    tasks = tuple(_build_task(item) for item in data["tasks"])
     return OptimizationRequest(
-        prices_per_kwh=tuple(float(value) for value in data["prices_per_kwh"]),
-        base_load_kw=tuple(float(value) for value in data["base_load_kw"]),
+        prices_per_kwh=tuple(
+            _number_field(value, "prices_per_kwh") for value in data["prices_per_kwh"]
+        ),
+        base_load_kw=tuple(
+            _number_field(value, "base_load_kw") for value in data["base_load_kw"]
+        ),
         tasks=tasks,
-        slot_hours=float(data["slot_hours"]),
-        max_power_kw=float(data["max_power_kw"]),
+        slot_hours=_number_field(data["slot_hours"], "slot_hours"),
+        max_power_kw=_number_field(data["max_power_kw"], "max_power_kw"),
     )
 
 
